@@ -1,0 +1,150 @@
+const User = require("../../models/user.model");
+const AdminProfile = require("../../models/adminProfile.model");
+const { validationResult } = require("express-validator");
+const { setAuthCookies, clearAuthCookies } = require("../../utils/cookies");
+const {
+  generateToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} = require("../../utils/auth");
+
+// Common login function
+const loginUser = async (req, res, accountType) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+    }
+
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide email and password",
+      });
+    }
+
+    // Find user with password and include profile based on account type
+    const includeOptions =
+      accountType === "admin"
+        ? [{ model: AdminProfile, as: "adminProfile" }]
+        : []; // Add merchant profile when ready
+
+    const foundUser = await User.scope("withPassword").findOne({
+      where: { email },
+      include: includeOptions,
+    });
+
+    if (!foundUser || !(await foundUser.isPasswordMatch(password))) {
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect email or password",
+      });
+    }
+
+    if (foundUser.accountType !== accountType) {
+      return res.status(403).json({
+        success: false,
+        message: `Not authorized as ${accountType}`,
+      });
+    }
+
+    const accessToken = generateToken(foundUser);
+    const refreshToken = generateRefreshToken(foundUser);
+
+    setAuthCookies(res, accessToken, refreshToken);
+
+    const userData = foundUser.toJSON();
+    delete userData.password;
+
+    // Prepare response structure
+    const response = {
+      success: true,
+      message: "Login successful",
+      data: {
+        user: {
+          id: userData.id,
+          email: userData.email,
+          accountType: userData.accountType,
+          isActive: userData.isActive,
+          updatedAt: userData.updatedAt,
+          createdAt: userData.createdAt,
+          lastPasswordChange: userData.lastPasswordChange,
+          ...(userData.adminProfile && { adminProfile: userData.adminProfile }),
+          // Add merchant profile here when ready
+        },
+        accessToken, // Include in response for clients that need it
+      },
+    };
+
+    return res.status(200).json(response);
+  } catch (err) {
+    console.error("Login Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Error logging in",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+// Admin login
+exports.adminLogin = async (req, res) => {
+  await loginUser(req, res, "admin");
+};
+
+// Merchant login
+exports.merchantLogin = async (req, res) => {
+  await loginUser(req, res, "merchant");
+};
+
+// Refresh token
+exports.refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "No refresh token provided",
+      });
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    const user = await User.findByPk(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const newAccessToken = generateToken(user);
+    setAuthCookies(res, newAccessToken, refreshToken);
+
+    res.status(200).json({
+      success: true,
+      accessToken: newAccessToken,
+    });
+  } catch (err) {
+    clearAuthCookies(res);
+    res.status(401).json({
+      success: false,
+      message: "Invalid refresh token",
+    });
+  }
+};
+
+// Logout
+exports.logout = (req, res) => {
+  clearAuthCookies(res);
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
+};
