@@ -1,5 +1,6 @@
 const User = require("../../models/user.model");
 const AdminProfile = require("../../models/adminProfile.model");
+const MerchantProfile = require("../../models/merchantProfile.model");
 const { validationResult } = require("express-validator");
 const { setAuthCookies, clearAuthCookies } = require("../../utils/cookies");
 const {
@@ -32,7 +33,7 @@ const loginUser = async (req, res, accountType) => {
     const includeOptions =
       accountType === "admin"
         ? [{ model: AdminProfile, as: "adminProfile" }]
-        : []; // Add merchant profile when ready
+        : [{ model: MerchantProfile, as: "merchantProfile" }]; 
 
     const foundUser = await User.scope("withPassword").findOne({
       where: { email },
@@ -76,6 +77,7 @@ const loginUser = async (req, res, accountType) => {
           lastPasswordChange: userData.lastPasswordChange,
           ...(userData.adminProfile && { adminProfile: userData.adminProfile }),
           // Add merchant profile here when ready
+          ...(userData.merchantProfile && {merchantProfile: userData.merchantProfile}),
         },
         accessToken, // Include in response for clients that need it
       },

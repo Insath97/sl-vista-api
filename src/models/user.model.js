@@ -9,6 +9,12 @@ class User extends Model {
       foreignKey: "userId",
       as: "adminProfile",
     });
+
+    this.hasOne(models.MerchantProfile, {
+      foreignKey: "userId",
+      as: "merchantProfile",
+      onDelete: "CASCADE",
+    });
   }
 
   // Instance method to check password
@@ -80,6 +86,9 @@ User.init(
       },
       admins: {
         where: { accountType: "admin" },
+      },
+      merchants: {
+        where: { accountType: "merchant" },
       },
     },
     hooks: {

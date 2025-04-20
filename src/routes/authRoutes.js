@@ -7,7 +7,7 @@ const { loginValidation } = require("../utils/validations/auth.validation");
 router.post("/admin/login", loginValidation, authController.adminLogin);
 
 // Merchant authentication
-router.post("/merchant/login", loginValidation, authController.merchantLogin);
+router.post("/merchants/login", loginValidation, authController.merchantLogin);
 
 // Token refresh
 router.post("/refresh", authController.refreshToken);
