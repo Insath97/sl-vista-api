@@ -1,31 +1,36 @@
 const { body, param, query } = require("express-validator");
 const { Op } = require("sequelize");
+const SubCategory = require("../../models/subCategory.model");
 const Category = require("../../models/category.model");
 
-const categoryValidationRules = {
+const subCategoryValidationRules = {
   create: [
-    body("language_code")
-      .trim()
-      .notEmpty()
-      .withMessage("Language code is required")
-      .isIn(["en", "ar", "fr"])
-      .withMessage("Invalid language code. Only en, ar, fr are allowed"),
+    body("categoryId")
+      .isInt()
+      .withMessage("Valid category ID is required")
+      .custom(async (value) => {
+        const category = await Category.findByPk(value);
+        if (!category) {
+          throw new Error("Category not found");
+        }
+        return true;
+      }),
 
     body("name")
       .trim()
       .notEmpty()
-      .withMessage("Category name is required")
+      .withMessage("SubCategory name is required")
       .isLength({ min: 2, max: 100 })
       .withMessage("Name must be between 2-100 characters")
       .custom(async (value, { req }) => {
-        const exists = await Category.findOne({
+        const exists = await SubCategory.findOne({
           where: {
             name: value,
-            language_code: req.body.language_code,
+            categoryId: req.body.categoryId,
           },
         });
         if (exists) {
-          throw new Error("Category name already exists for this language");
+          throw new Error("SubCategory name already exists in this category");
         }
         return true;
       }),
@@ -39,7 +44,7 @@ const categoryValidationRules = {
       )
       .custom(async (value) => {
         if (value) {
-          const exists = await Category.findOne({ where: { slug: value } });
+          const exists = await SubCategory.findOne({ where: { slug: value } });
           if (exists) {
             throw new Error("Slug is already in use");
           }
@@ -58,11 +63,6 @@ const categoryValidationRules = {
       .optional()
       .isBoolean()
       .withMessage("isActive must be a boolean value"),
-
-    body("showInNav")
-      .optional()
-      .isBoolean()
-      .withMessage("showInNav must be a boolean value"),
 
     body("description")
       .optional()
@@ -86,11 +86,11 @@ const categoryValidationRules = {
   update: [
     param("id")
       .isInt()
-      .withMessage("Invalid category ID")
+      .withMessage("Invalid subcategory ID")
       .custom(async (value) => {
-        const category = await Category.findByPk(value);
-        if (!category) {
-          throw new Error("Category not found");
+        const subCategory = await SubCategory.findByPk(value);
+        if (!subCategory) {
+          throw new Error("SubCategory not found");
         }
         return true;
       }),
@@ -101,20 +101,23 @@ const categoryValidationRules = {
       .isLength({ min: 2, max: 100 })
       .withMessage("Name must be between 2-100 characters")
       .custom(async (value, { req }) => {
-        const category = await Category.findOne({
+        const subCategory = await SubCategory.findOne({
           where: {
             name: value,
-            language_code: req.body.language_code,
+            categoryId:
+              req.body.categoryId ||
+              (
+                await SubCategory.findByPk(req.params.id)
+              ).categoryId,
             id: { [Op.ne]: req.params.id },
           },
         });
-        if (category) {
-          throw new Error("Category name already exists for this language");
+        if (subCategory) {
+          throw new Error("SubCategory name already exists in this category");
         }
         return true;
       }),
 
-    // Include other fields with same validation as create
     body("slug")
       .optional()
       .trim()
@@ -124,7 +127,7 @@ const categoryValidationRules = {
       )
       .custom(async (value, { req }) => {
         if (value) {
-          const exists = await Category.findOne({
+          const exists = await SubCategory.findOne({
             where: {
               slug: value,
               id: { [Op.ne]: req.params.id },
@@ -140,25 +143,17 @@ const categoryValidationRules = {
     // Other fields same as create...
   ],
 
-  getById: [param("id").isInt().withMessage("Invalid category ID")],
+  getById: [param("id").isInt().withMessage("Invalid subcategory ID")],
 
-  delete: [param("id").isInt().withMessage("Invalid category ID")],
+  delete: [param("id").isInt().withMessage("Invalid subcategory ID")],
 
   list: [
-    query("language_code")
-      .optional()
-      .isIn(["en", "ar", "fr"])
-      .withMessage("Invalid language code"),
+    query("categoryId").optional().isInt().withMessage("Invalid category ID"),
 
     query("isActive")
       .optional()
       .isBoolean()
       .withMessage("isActive must be a boolean value"),
-
-    query("showInNav")
-      .optional()
-      .isBoolean()
-      .withMessage("showInNav must be a boolean value"),
 
     query("page")
       .optional()
@@ -169,28 +164,28 @@ const categoryValidationRules = {
       .optional()
       .isInt({ min: 1, max: 100 })
       .withMessage("Limit must be between 1-100"),
-  ],
 
-  toggleVisibility: [param("id").isInt().withMessage("Invalid category ID")],
-
-  toggleNavVisibility: [param("id").isInt().withMessage("Invalid category ID")],
-  getWithSubcategories: [
-    param("id")
-      .isInt()
-      .withMessage("Invalid category ID")
-      .custom(async (value) => {
-        const category = await Category.findByPk(value);
-        if (!category) {
-          throw new Error("Category not found");
-        }
-        return true;
-      }),
-
-    query("subcategoryIsActive")
+    query("includeCategory")
       .optional()
       .isBoolean()
-      .withMessage("subcategoryIsActive must be boolean"),
+      .withMessage("includeCategory must be a boolean value"),
+  ],
+
+  toggleVisibility: [param("id").isInt().withMessage("Invalid subcategory ID")],
+
+  getByCategory: [
+    param("categoryId").isInt().withMessage("Invalid category ID"),
+
+    query("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean value"),
+
+    query("includeCategory")
+      .optional()
+      .isBoolean()
+      .withMessage("includeCategory must be a boolean value"),
   ],
 };
 
-module.exports = categoryValidationRules;
+module.exports = subCategoryValidationRules;

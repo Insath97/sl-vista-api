@@ -157,10 +157,12 @@ Category.init(
     },
     hooks: {
       beforeValidate: (category) => {
-        if (category.name && !category.slug) {
+        if (category.changed("name") || !category.slug) {
+          // Checks if name was modified
           category.slug = slugify(category.name, {
             lower: true,
             strict: true,
+            remove: /[*+~.()'"!:@]/g,
           });
         }
       },
