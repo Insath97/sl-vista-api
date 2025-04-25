@@ -16,6 +16,7 @@ const categoryRoutes = require("./src/routes/admin/category.routes");
 const subCategoryRoutes = require("./src/routes/admin/subCategory.routes");
 const merchantRoutes = require("./src/routes/Merchant/merchantAuthRoutes");
 const adminMerchantRoutes = require("./src/routes/admin/merchant.routes");
+const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/v1/languages", languagesRoutes);
 app.use("/api/v1/admin/categories", categoryRoutes);
 app.use("/api/v1/admin/subcategories", subCategoryRoutes);
 app.use("/api/v1/admin", adminMerchantRoutes);
+app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 
 // merchnat routes
 app.use("/api/v1/merchants", merchantRoutes);
