@@ -2,31 +2,21 @@ const { DataTypes, Model } = require("sequelize");
 const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
-class TransportType extends Model {
-  
-  static associate(models) {
-    this.hasMany(models.Transport, {
-      foreignKey: "transportTypeId",
-      as: "transports",
-      onDelete: "CASCADE",
-    });
-  }
-
+class Amenity extends Model {
+  // Instance Methods
   async toggleVisibility() {
     this.isActive = !this.isActive;
     return await this.save();
   }
 }
 
-TransportType.init(
+Amenity.init(
   {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
-      validate: {
-        isInt: true,
-      },
+      validate: { isInt: true },
     },
     language_code: {
       type: DataTypes.STRING(2),
@@ -40,13 +30,8 @@ TransportType.init(
       type: DataTypes.STRING(100),
       allowNull: false,
       validate: {
-        notEmpty: {
-          msg: "Transport type name cannot be empty",
-        },
-        len: {
-          args: [2, 100],
-          msg: "Name must be between 2-100 characters",
-        },
+        notEmpty: { msg: "Amenity name cannot be empty" },
+        len: { args: [2, 100], msg: "Name must be between 2-100 characters" },
       },
       set(value) {
         this.setDataValue("name", value.trim());
@@ -62,15 +47,21 @@ TransportType.init(
     slug: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: {
-        msg: "This slug is already in use",
-      },
+      unique: { msg: "This slug is already in use" },
       validate: {
         is: {
           args: /^[a-z0-9-]+$/,
-          msg: "Slug can only contain lowercase letters, numbers, and hyphens",
+          msg: "Slug can only contain lowercase letters, numbers and hyphens",
         },
         notEmpty: true,
+      },
+    },
+    icon: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: "Icon path is required" },
+        isUrl: { msg: "Icon must be a valid URL" },
       },
     },
     isActive: {
@@ -80,24 +71,20 @@ TransportType.init(
   },
   {
     sequelize,
-    tableName: "transport_types",
+    tableName: "amenities",
     timestamps: true,
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
     },
     scopes: {
-      withInactive: {
-        where: {},
-      },
-      forAdmin: {
-        paranoid: false,
-      },
+      withInactive: { where: {} },
+      forAdmin: { paranoid: false, attributes: { exclude: [] } },
     },
     hooks: {
-      beforeValidate: (transportType) => {
-        if (transportType.changed("name") || !transportType.slug) {
-          transportType.slug = slugify(transportType.name, {
+      beforeValidate: (amenity) => {
+        if (amenity.changed("name") || !amenity.slug) {
+          amenity.slug = slugify(amenity.name, {
             lower: true,
             strict: true,
             remove: /[*+~.()'"!:@]/g,
@@ -108,4 +95,4 @@ TransportType.init(
   }
 );
 
-module.exports = TransportType;
+module.exports = Amenity;
