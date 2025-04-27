@@ -8,14 +8,21 @@ class Transport extends Model {
       foreignKey: "transportTypeId",
       as: "transportType",
     });
+
     this.hasMany(models.TransportImage, {
       foreignKey: "transportId",
       as: "images",
       onDelete: "CASCADE",
     });
+
+    // Updated belongsToMany association
     this.belongsToMany(models.Amenity, {
-      through: models.TransportAmenity,
-      foreignKey: "transportId",
+      through: {
+        model: models.TransportAmenity,
+        unique: false,
+      },
+      foreignKey: "transportId", // Explicit foreign key
+      otherKey: "amenityId", // Explicit other key
       as: "amenities",
       onDelete: "CASCADE",
     });

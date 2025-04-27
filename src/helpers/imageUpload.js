@@ -2,61 +2,57 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const createStorage = (subfolder) => {
-  return multer.diskStorage({
+const createUploader = (entityType) => {
+  const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      const uploadDir = `public/uploads/${subfolder}/${
-        req.params.id || "temp"
-      }`;
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
+      const uploadDir = `public/uploads/${entityType}/${req.params.id || 'temp'}`;
+      fs.mkdirSync(uploadDir, { recursive: true });
       cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       const ext = path.extname(file.originalname);
-      cb(null, file.fieldname + "-" + uniqueSuffix + ext);
-    },
+      const filename = `${file.fieldname}-${Date.now()}${ext}`;
+      cb(null, filename);
+    }
   });
-};
 
-const fileFilter = (req, file, cb) => {
-  const filetypes = /jpeg|jpg|png|gif/;
-  const mimetype = filetypes.test(file.mimetype);
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+  const fileFilter = (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extValid = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimeValid = allowedTypes.test(file.mimetype);
+    extValid && mimeValid ? cb(null, true) : cb(new Error('Only image files are allowed!'), false);
+  };
 
-  if (mimetype && extname) {
-    return cb(null, true);
-  }
-  cb(new Error("Only image files are allowed!"));
-};
-
-const createUploader = (subfolder) => {
   return multer({
-    storage: createStorage(subfolder),
-    fileFilter: fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    storage,
+    fileFilter,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
   });
 };
 
-const handleImageUpload = (fieldName, subfolder = "transport") => {
-  const upload = createUploader(subfolder);
-  return upload.array(fieldName, 10); // Allow up to 10 files
+exports.handleImageUpload = (entityType, fieldName = 'images', maxCount = 10) => 
+  createUploader(entityType).array(fieldName, maxCount);
+
+exports.saveImagePaths = async (modelName, entityId, files) => {
+  const ModelImage = require(`../models/${modelName}Image`);
+  return ModelImage.bulkCreate(
+    files.map(file => ({
+      [`${modelName.toLowerCase()}Id`]: entityId,
+      imagePath: file.path.replace('public', ''),
+      isFeatured: false
+    }))
+  );
 };
 
-const saveImagePaths = async (model, id, files) => {
-  const imageRecords = files.map((file) => ({
-    [model.toLowerCase() + "Id"]: id, // creates transportId, productId, etc.
-    imagePath: file.path.replace("public", ""),
-    isFeatured: false,
-  }));
-
-  const modelImage = require(`../models/${model}Image`);
-  return await modelImage.bulkCreate(imageRecords);
-};
-
-module.exports = {
-  handleImageUpload,
-  saveImagePaths,
+exports.deleteImageFiles = async (modelName, entityId) => {
+  const ModelImage = require(`../models/${modelName}Image`);
+  const images = await ModelImage.findAll({ where: { [`${modelName.toLowerCase()}Id`]: entityId } });
+  
+  await Promise.all(
+    images.map(img => 
+      fs.promises.unlink(`public${img.imagePath}`).catch(console.error)
+    )
+  );
+  
+  return ModelImage.destroy({ where: { [`${modelName.toLowerCase()}Id`]: entityId } });
 };

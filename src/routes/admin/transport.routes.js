@@ -1,43 +1,62 @@
-const express = require("express");
+// routes/transportRoutes.js
+const express = require('express');
 const router = express.Router();
-const transportController = require("../../controllers/admin/transport.controller");
-const validate = require("../../utils/validations/transport.validation");
+const controller = require('../../controllers/admin/transport.controller');
+const validate = require('../../utils/validations/transport.validation');
 const authMiddleware = require("../../middlewares/authMiddleware");
-
-// Apply auth middleware to all routes
+// Apply authentication to all routes
 router.use(authMiddleware);
 
 // CRUD Routes
 router.post(
-  "/",
+  '/',
   validate.create,
-  transportController.uploadImages,
-  transportController.createTransport
+  controller.uploadImages,
+  controller.createTransport
 );
 
-router.get("/", validate.list, transportController.getAllTransports);
+router.get(
+  '/',
+  validate.list,
+  controller.getAllTransports
+);
 
-router.get("/:id", validate.getById, transportController.getTransportById);
+router.get(
+  '/:id',
+  validate.getById,
+  controller.getTransportById
+);
 
 router.put(
-  "/:id",
+  '/:id',
   validate.update,
-  transportController.uploadImages,
-  transportController.updateTransport
+  controller.uploadImages,
+  controller.updateTransport
 );
 
-router.delete("/:id", validate.delete, transportController.deleteTransport);
+router.delete(
+  '/:id',
+  validate.delete,
+  controller.deleteTransport
+);
 
+// Special Operations
 router.patch(
-  "/:id/restore",
+  '/:id/restore',
   validate.restore,
-  transportController.restoreTransport
+  controller.restoreTransport
 );
 
 router.patch(
-  "/:id/toggle-verified",
-  validate.toggleVerified,
-  transportController.toggleVerified
+  '/:id/status',
+  validate.toggleStatus,
+  controller.toggleStatus
+);
+
+router.put(
+  '/:id/amenities',
+  validate.updateAmenities,
+  controller.updateAmenities
 );
 
 module.exports = router;
