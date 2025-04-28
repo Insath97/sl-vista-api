@@ -1,2 +1,13 @@
 1. create seeder
 2. seprate logger
+
+
+2025-04-28
+********************
+
+1. Activity Model
+    i. rating
+    ii. guide available
+    iii. tags
+    iv. available dates
+    

@@ -26,20 +26,72 @@ exports.createAmenity = async (req, res) => {
   }
 };
 
-// Get all amenities
+
+
+// Get all amenities with advanced filtering
 exports.getAllAmenities = async (req, res) => {
   try {
+    const {
+      includeInactive,
+      search,
+      language_code,
+      sortBy = 'name',  // Changed from 'position' to 'name' as default
+      sortOrder = 'ASC',
+      page = 1,
+      pageSize = 10
+    } = req.query;
+
+    // Validate sortBy to prevent SQL injection
+    const validSortFields = ['name', 'slug', 'isActive', 'createdAt', 'updatedAt'];
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'name';
+
+    // Build where clause
+    const where = {};
+    
+    if (language_code) {
+      where.language_code = language_code;
+    }
+    
+    if (search) {
+      where.name = {
+        [Op.iLike]: `%${search}%`  // Case-insensitive search
+      };
+    }
+
+    // Build options
+    const options = {
+      where,
+      order: [[finalSortBy, sortOrder.toUpperCase()]],
+      offset: (page - 1) * pageSize,
+      limit: parseInt(pageSize),
+    };
+
+    // Apply scope based on includeInactive
     const amenities = await Amenity.scope(
-      req.query.includeInactive === "true" ? "withInactive" : null
-    ).findAll({
-      order: [["position", "ASC"]],
+      includeInactive === "true" ? "withInactive" : null
+    ).findAll(options);
+
+    // Get total count for pagination
+    const totalCount = await Amenity.scope(
+      includeInactive === "true" ? "withInactive" : null
+    ).count({ where });
+
+    return res.status(200).json({ 
+      success: true, 
+      data: amenities,
+      pagination: {
+        page: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize)
+      }
     });
-    return res.status(200).json({ success: true, data: amenities });
   } catch (error) {
     console.error("Error fetching amenities:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch amenities",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
