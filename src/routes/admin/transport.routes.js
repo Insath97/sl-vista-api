@@ -14,12 +14,13 @@ router.post(
   controller.createTransport
 );
 
-/* router.get(
+ router.get(
   '/',
   validate.list,
   controller.getAllTransports
 );
 
+/*
 router.get(
   '/:id',
   validate.getById,
