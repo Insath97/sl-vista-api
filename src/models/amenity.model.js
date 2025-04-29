@@ -3,18 +3,7 @@ const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class Amenity extends Model {
-  static associate(models) {
-    this.belongsToMany(models.Transport, {
-      through: {
-        model: models.TransportAmenity,
-        unique: false,
-      },
-      foreignKey: "amenityId", // Must match TransportAmenity's column
-      otherKey: "transportId", // Must match TransportAmenity's column
-      as: "transports",
-      onDelete: "CASCADE",
-    });
-  }
+
 
   // Instance Methods
   async toggleVisibility() {

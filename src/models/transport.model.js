@@ -15,15 +15,9 @@ class Transport extends Model {
       onDelete: "CASCADE",
     });
 
-    // Updated belongsToMany association
-    this.belongsToMany(models.Amenity, {
-      through: {
-        model: models.TransportAmenity,
-        unique: false,
-      },
-      foreignKey: "transportId", // Explicit foreign key
-      otherKey: "amenityId", // Explicit other key
-      as: "amenities",
+    this.hasMany(models.TransportReview, {
+      foreignKey: "transportId",
+      as: "reviews",
       onDelete: "CASCADE",
     });
   }
@@ -31,6 +25,27 @@ class Transport extends Model {
   async toggleVerified() {
     this.vistaVerified = !this.vistaVerified;
     return await this.save();
+  }
+
+  async getAverageRating() {
+    const result = await this.sequelize.models.TransportReview.findOne({
+      attributes: [
+        [
+          this.sequelize.fn("AVG", this.sequelize.col("rating")),
+          "averageRating",
+        ],
+        [this.sequelize.fn("COUNT", this.sequelize.col("id")), "reviewCount"],
+      ],
+      where: {
+        transportId: this.id,
+        status: "approved",
+      },
+    });
+
+    return {
+      averageRating: parseFloat(result?.get("averageRating") || 0).toFixed(1),
+      reviewCount: result?.get("reviewCount") || 0,
+    };
   }
 }
 
@@ -162,12 +177,57 @@ Transport.init(
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
+      attributes: {
+        include: [
+          [
+            sequelize.literal(`(
+              SELECT COALESCE(AVG(rating), 0)
+              FROM transport_reviews
+              WHERE 
+                transport_reviews.transportId = transports.id AND
+                transport_reviews.status = 'approved' AND
+                transport_reviews.deletedAt IS NULL
+            )`),
+            "averageRating",
+          ],
+          [
+            sequelize.literal(`(
+              SELECT COUNT(*)
+              FROM transport_reviews
+              WHERE 
+                transport_reviews.transportId = transports.id AND
+                transport_reviews.status = 'approved' AND
+                transport_reviews.deletedAt IS NULL
+            )`),
+            "reviewCount",
+          ],
+        ],
+      },
     },
     scopes: {
-      withInactive: { where: {} },
-      forAdmin: { paranoid: false },
-      withImages: { include: ["images"] },
-      withTransportType: { include: ["transportType"] },
+      // ... (keep your existing scopes)
+      withReviews: {
+        include: [
+          {
+            association: "reviews",
+            where: { status: "approved" },
+            required: false,
+            include: ["user"],
+          },
+        ],
+      },
+      withFullDetails: {
+        include: [
+          "transportType",
+          "images",
+          {
+            association: "reviews",
+            where: { status: "approved" },
+            required: false,
+            include: ["user"],
+          },
+        ],
+      },
     },
     hooks: {
       beforeValidate: (transport) => {

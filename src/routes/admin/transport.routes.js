@@ -11,11 +11,10 @@ router.use(authMiddleware);
 router.post(
   '/',
   validate.create,
-  controller.uploadImages,
   controller.createTransport
 );
 
-router.get(
+/* router.get(
   '/',
   validate.list,
   controller.getAllTransports
@@ -57,6 +56,6 @@ router.put(
   '/:id/amenities',
   validate.updateAmenities,
   controller.updateAmenities
-);
+); */
 
 module.exports = router;
