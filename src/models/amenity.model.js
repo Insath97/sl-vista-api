@@ -65,11 +65,8 @@ Amenity.init(
     },
     icon: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      validate: {
-        notEmpty: { msg: "Icon path is required" },
-        isUrl: { msg: "Icon must be a valid URL" },
-      },
+      allowNull: true,
+     
     },
     category: {
       type: DataTypes.STRING(50),

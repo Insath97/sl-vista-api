@@ -34,12 +34,12 @@ const amenityValidationRules = {
         return true;
       }),
 
-    body("icon")
+    /* body("icon")
       .trim()
       .notEmpty()
       .withMessage("Icon path is required")
       .isURL()
-      .withMessage("Icon must be a valid URL"),
+      .withMessage("Icon must be a valid URL"), */
 
     body("language_code")
       .trim()
@@ -94,11 +94,11 @@ const amenityValidationRules = {
         return true;
       }),
 
-    body("icon")
+    /* body("icon")
       .optional()
       .trim()
       .isURL()
-      .withMessage("Icon must be a valid URL"),
+      .withMessage("Icon must be a valid URL"), */
   ],
 
   getById: [param("id").isInt().withMessage("Invalid amenity ID")],
