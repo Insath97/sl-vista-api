@@ -1,4 +1,4 @@
-const { DataTypes, Model } = require("sequelize");
+const { DataTypes, Model , Op} = require("sequelize");
 const { sequelize } = require("../config/database");
 
 class TransportReview extends Model {
@@ -11,9 +11,21 @@ class TransportReview extends Model {
     this.belongsTo(models.User, {
       foreignKey: "userId",
       as: "user",
-      constraints: false, 
+    });
+  }
+
+  static async canUserReview(userId, transportId) {
+    if (!userId) return false;
+    
+    const existingReview = await this.findOne({
+      where: {
+        userId,
+        transportId,
+        status: { [sequelize.Op.ne]: 'rejected' }
+      }
     });
     
+    return !existingReview;
   }
 }
 
@@ -34,7 +46,7 @@ TransportReview.init(
     },
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: true, // Allow anonymous reviews
+      allowNull: false,
       references: {
         model: "users",
         key: "id",
@@ -51,7 +63,10 @@ TransportReview.init(
     text: {
       type: DataTypes.TEXT,
       validate: {
-        len: [10, 2000],
+        len: {
+          args: [10, 2000],
+          msg: "Review must be between 10 and 2000 characters"
+        },
       },
     },
     isAnonymous: {
@@ -66,6 +81,10 @@ TransportReview.init(
       type: DataTypes.ENUM("pending", "approved", "rejected"),
       defaultValue: "pending",
     },
+    adminNotes: {
+      type: DataTypes.TEXT,
+      comment: "Notes from admin about review approval/rejection"
+    },
   },
   {
     sequelize,
@@ -77,17 +96,32 @@ TransportReview.init(
       { fields: ["userId"] },
       { fields: ["isVistaReview"] },
       { fields: ["status"] },
+      { 
+        fields: ["userId", "transportId"],
+        unique: true,
+        where: {
+          status: { [Op.ne]: 'rejected' }
+        }
+      }
     ],
     hooks: {
-      beforeCreate: (review) => {
+      beforeCreate: async (review) => {
         // Vista reviews are automatically approved
         if (review.isVistaReview) {
           review.status = "approved";
         }
         
         // Validate anonymous reviews
-        if (review.isAnonymous && review.userId) {
-          throw new Error("Anonymous reviews cannot have a user ID");
+        if (review.isAnonymous) {
+          review.userId = null;
+        }
+        
+        // Check if user has already reviewed this transport
+        if (review.userId && !review.isVistaReview) {
+          const canReview = await TransportReview.canUserReview(review.userId, review.transportId);
+          if (!canReview) {
+            throw new Error("You have already submitted a review for this transport");
+          }
         }
       },
     },

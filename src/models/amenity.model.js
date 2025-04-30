@@ -3,9 +3,14 @@ const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class Amenity extends Model {
+  static associate(models) {
+    this.belongsToMany(models.Transport, {
+      through: models.TransportAmenity,
+      foreignKey: "amenityId",
+      as: "transports",
+    });
+  }
 
-
-  // Instance Methods
   async toggleVisibility() {
     this.isActive = !this.isActive;
     return await this.save();
@@ -66,6 +71,18 @@ Amenity.init(
         isUrl: { msg: "Icon must be a valid URL" },
       },
     },
+    category: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      validate: {
+        isIn: {
+          args: [
+            ["general", "comfort", "safety", "entertainment", "food", "other"],
+          ],
+          msg: "Invalid amenity category",
+        },
+      },
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
@@ -78,10 +95,12 @@ Amenity.init(
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
+      order: [["name", "ASC"]],
     },
     scopes: {
       withInactive: { where: {} },
-      forAdmin: { paranoid: false, attributes: { exclude: [] } },
+      forAdmin: { paranoid: false },
+      byCategory: (category) => ({ where: { category } }),
     },
     hooks: {
       beforeValidate: (amenity) => {

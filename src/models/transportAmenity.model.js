@@ -5,11 +5,13 @@ class TransportAmenity extends Model {
   static associate(models) {
     this.belongsTo(models.Transport, {
       foreignKey: "transportId",
+      as: "transport",
       onDelete: "CASCADE"
     });
     
     this.belongsTo(models.Amenity, {
-      foreignKey: "amenityId", 
+      foreignKey: "amenityId",
+      as: "amenity",
       onDelete: "CASCADE"
     });
   }
@@ -34,7 +36,12 @@ TransportAmenity.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true
     },
-    notes: DataTypes.TEXT
+    notes: {
+      type: DataTypes.TEXT,
+      set(value) {
+        this.setDataValue('notes', value ? value.trim() : null);
+      }
+    }
   },
   {
     sequelize,
@@ -45,7 +52,16 @@ TransportAmenity.init(
         unique: true,
         fields: ["transportId", "amenityId"]
       }
-    ]
+    ],
+    hooks: {
+      beforeCreate: async (transportAmenity) => {
+        // Ensure the amenity exists
+        const amenity = await transportAmenity.sequelize.models.Amenity.findByPk(transportAmenity.amenityId);
+        if (!amenity) {
+          throw new Error('Amenity not found');
+        }
+      }
+    }
   }
 );
 

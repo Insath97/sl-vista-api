@@ -1,164 +1,67 @@
 const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
-const fs = require("fs");
-const path = require("path");
-const slugify = require("slugify");
 
-const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
+const Transport = require("../../models/transport.model");
 const TransportImage = require("../../models/transportImage.model");
-const TransportReview = require("../../models/transportReview.model");
+const TransportAmenity = require("../../models/transportAmenity.model");
 
-// Image Handling Helpers
-const handleImageUpload = async (files, transportId) => {
-  const uploadDir = path.join(
-    __dirname,
-    "../../public/uploads/transport",
-    transportId.toString()
-  );
-
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  const imagePaths = [];
-
-  for (const file of files) {
-    const fileName = `${Date.now()}-${file.originalname}`;
-    const filePath = path.join(uploadDir, fileName);
-    const relativePath = `/uploads/transport/${transportId}/${fileName}`;
-
-    await fs.promises.rename(file.path, filePath);
-    imagePaths.push({
-      transportId,
-      imagePath: relativePath,
-      isFeatured: false,
-    });
-  }
-
-  return TransportImage.bulkCreate(imagePaths);
-};
-
-const deleteTransportImages = async (transportId) => {
-  const images = await TransportImage.findAll({ where: { transportId } });
-
-  for (const image of images) {
-    await image.deleteFile();
-  }
-
-  const uploadDir = path.join(
-    __dirname,
-    "../../public/uploads/transport",
-    transportId.toString()
-  );
-  if (fs.existsSync(uploadDir)) {
-    fs.rmdirSync(uploadDir, { recursive: true });
-  }
-
-  return TransportImage.destroy({ where: { transportId } });
-};
-
-// Main Controller Methods
-exports.getAllTransports = async (req, res) => {
-  try {
-    const {
-      includeInactive,
-      transportType,
-      search,
-      page = 1,
-      limit = 10,
-    } = req.query;
-    const offset = (page - 1) * limit;
-    const where = {};
-
-    if (!includeInactive) where.isActive = true;
-    if (transportType) where.transportTypeId = transportType;
-    if (search) {
-      where[Op.or] = [
-        { title: { [Op.iLike]: `%${search}%` } },
-        { operatorName: { [Op.iLike]: `%${search}%` } },
-        { departureCity: { [Op.iLike]: `%${search}%` } },
-        { arrivalCity: { [Op.iLike]: `%${search}%` } },
-      ];
-    }
-
-    const { count, rows } = await Transport.findAndCountAll({
-      where,
-      include: ["transportType", "images"],
-      order: [["createdAt", "DESC"]],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      distinct: true,
-    });
-
-    res.json({
-      success: true,
-      data: rows,
-      pagination: {
-        total: count,
-        pages: Math.ceil(count / limit),
-        currentPage: parseInt(page),
-        perPage: parseInt(limit),
-      },
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch transports",
-    });
-  }
-};
-
-exports.getTransportById = async (req, res) => {
-  try {
-    const transport = await Transport.scope("withFullDetails").findByPk(
-      req.params.id,
-      {
-        paranoid: req.query.includeDeleted === "true" ? false : true,
-      }
-    );
-
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
-    }
-
-    res.json({ success: true, data: transport });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch transport",
-    });
-  }
-};
+const {
+  uploadTransportImages,
+  moveTempFiles,
+} = require("../../middlewares/upload");
 
 exports.createTransport = async (req, res) => {
+  // 1. Validate request
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
+    // 2. Create transport record
     const transport = await Transport.create(req.body);
 
-    if (req.files?.length) {
-      await handleImageUpload(req.files, transport.id);
+    // 3. Handle amenities (if provided)
+    if (req.body.amenities && req.body.amenities.length > 0) {
+      await TransportAmenity.bulkCreate(
+        req.body.amenities.map((amenity) => ({
+          transportId: transport.id,
+          amenityId: amenity.amenityId,
+          isAvailable: amenity.isAvailable !== false,
+          notes: amenity.notes || null,
+        }))
+      );
     }
 
-    const result = await Transport.scope("withFullDetails").findByPk(
-      transport.id
-    );
+    // 4. Process uploaded images
+    if (req.files?.length > 0) {
+      // Move files from temp folder to transport ID folder
+      if (req.body.tempId) {
+        await moveTempFiles(req.body.tempId, transport.id);
+      }
+
+      // Save image records
+      await TransportImage.bulkCreate(
+        req.files.map((file) => ({
+          transportId: transport.id,
+          imagePath: `/uploads/transports/${transport.id}/${file.filename}`,
+          isFeatured: false,
+        }))
+      );
+    }
+
+    // 5. Return full transport data with relationships
+    const result = await Transport.findByPk(transport.id, {
+      include: ["images", "amenities"],
+    });
 
     res.status(201).json({
       success: true,
       data: result,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Transport creation failed:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create transport",
@@ -167,273 +70,143 @@ exports.createTransport = async (req, res) => {
   }
 };
 
-exports.updateTransport = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
+exports.getAllTransports = async (req, res) => {
   try {
-    const transport = await Transport.findByPk(req.params.id);
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
+    const {
+      // Pagination
+      page = 1,
+      limit = 10,
+
+      // Basic Filters
+      search,
+      transportTypeId,
+      minPrice,
+      maxPrice,
+      departureCity,
+      arrivalCity,
+
+      // Status Filters
+      isActive,
+      vistaVerified,
+
+      // Amenity Filters
+      amenities, // comma-separated IDs (e.g., "1,3,5")
+
+      // Rating Filters
+      minRating,
+
+      // Date Filters
+      createdAfter,
+      createdBefore,
+
+      // Sorting
+      sortBy = "createdAt",
+      sortOrder = "DESC",
+    } = req.query;
+
+    // 1. Build the WHERE clause
+    const where = {};
+
+    // Text search
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.iLike]: `%${search}%` } },
+        { operatorName: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+      ];
     }
 
-    if (req.body.title && req.body.title !== transport.title) {
-      req.body.slug = slugify(req.body.title, { lower: true, strict: true });
+    // Numeric/ID filters
+    if (transportTypeId) where.transportTypeId = transportTypeId;
+    if (departureCity)
+      where.departureCity = { [Op.iLike]: `%${departureCity}%` };
+    if (arrivalCity) where.arrivalCity = { [Op.iLike]: `%${arrivalCity}%` };
+    if (minPrice) where.pricePerKmUSD = { [Op.gte]: parseFloat(minPrice) };
+    if (maxPrice)
+      where.pricePerKmUSD = {
+        ...where.pricePerKmUSD,
+        [Op.lte]: parseFloat(maxPrice),
+      };
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+
+    // Date range
+    if (createdAfter || createdBefore) {
+      where.createdAt = {};
+      if (createdAfter) where.createdAt[Op.gte] = new Date(createdAfter);
+      if (createdBefore) where.createdAt[Op.lte] = new Date(createdBefore);
     }
 
-    await transport.update(req.body);
-
-    if (req.files?.length) {
-      await deleteTransportImages(transport.id);
-      await handleImageUpload(req.files, transport.id);
+    // 2. Handle amenities filter
+    let amenityFilter = {};
+    if (amenities) {
+      const amenityIds = amenities.split(",").map((id) => parseInt(id.trim()));
+      amenityFilter = {
+        where: { amenityId: { [Op.in]: amenityIds } },
+        group: "transportId",
+        having: sequelize.literal(
+          `COUNT(DISTINCT amenityId) = ${amenityIds.length}`
+        ),
+      };
     }
 
-    const result = await Transport.scope("withFullDetails").findByPk(
-      transport.id
-    );
-
-    res.json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update transport",
-    });
-  }
-};
-
-exports.deleteTransport = async (req, res) => {
-  try {
-    const transport = await Transport.findByPk(req.params.id);
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
+    // 3. Rating filter (subquery)
+    if (minRating) {
+      where[Op.and] = [
+        sequelize.literal(`(
+          SELECT AVG(rating)
+          FROM transport_reviews
+          WHERE 
+            transport_reviews.transportId = transports.id AND
+            transport_reviews.status = 'approved'
+        ) >= ${parseFloat(minRating)}`),
+      ];
     }
 
-    await deleteTransportImages(transport.id);
-    await transport.destroy();
-
-    res.json({
-      success: true,
-      message: "Transport deleted successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete transport",
-    });
-  }
-};
-
-exports.restoreTransport = async (req, res) => {
-  try {
-    const transport = await Transport.findOne({
-      where: { id: req.params.id },
-      paranoid: false,
-    });
-
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
-    }
-
-    if (!transport.deletedAt) {
-      return res.status(400).json({
-        success: false,
-        message: "Transport is not deleted",
-      });
-    }
-
-    await transport.restore();
-    res.json({
-      success: true,
-      data: transport,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to restore transport",
-    });
-  }
-};
-
-exports.toggleStatus = async (req, res) => {
-  try {
-    const transport = await Transport.findByPk(req.params.id);
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
-    }
-
-    transport.isActive = !transport.isActive;
-    await transport.save();
-
-    res.json({
-      success: true,
-      data: transport,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to toggle status",
-    });
-  }
-};
-
-// Review Management
-exports.addReview = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    const transport = await Transport.findByPk(req.params.id);
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
-    }
-
-    const reviewData = {
-      transportId: transport.id,
-      rating: req.body.rating,
-      text: req.body.text,
-      status: req.user?.isAdmin ? "approved" : "pending",
-      isAnonymous: req.body.isAnonymous || false,
-    };
-
-    if (req.user && !reviewData.isAnonymous) {
-      reviewData.userId = req.user.id;
-    }
-
-    const review = await TransportReview.create(reviewData);
-
-    // Update transport's average rating
-    const ratingInfo = await transport.getAverageRating();
-
-    res.status(201).json({
-      success: true,
-      data: {
-        review,
-        averageRating: ratingInfo.averageRating,
-        reviewCount: ratingInfo.reviewCount,
-      },
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to add review",
-    });
-  }
-};
-
-exports.getTransportReviews = async (req, res) => {
-  try {
-    const transport = await Transport.findByPk(req.params.id);
-    if (!transport) {
-      return res.status(404).json({
-        success: false,
-        message: "Transport not found",
-      });
-    }
-
-    const { status = "approved", page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
-
-    const where = {
-      transportId: transport.id,
-      ...(status !== "all" && { status }),
-    };
-
-    const { count, rows } = await TransportReview.findAndCountAll({
+    // 4. Execute query
+    const { count, rows } = await Transport.findAndCountAll({
       where,
-      include: ["user"],
-      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          association: "amenities",
+          ...amenityFilter,
+          required: !!amenities, // LEFT JOIN if no amenities filter
+        },
+        {
+          association: "images",
+          attributes: ["id", "imagePath", "isFeatured"],
+          limit: 1, // Only fetch 1 image per transport for listing
+        },
+        {
+          association: "transportType",
+          attributes: ["id", "name"],
+        },
+      ],
+      order: [[sortBy, sortOrder]],
       limit: parseInt(limit),
-      offset: parseInt(offset),
-      distinct: true,
+      offset: (page - 1) * limit,
+      subQuery: false,
+      distinct: true, // Critical for correct counting with JOINs
     });
 
+    // 5. Response
     res.json({
       success: true,
-      data: {
-        reviews: rows,
+      data: rows,
+      meta: {
         total: count,
-        pages: Math.ceil(count / limit),
-        currentPage: parseInt(page),
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("Failed to fetch transports:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch reviews",
-    });
-  }
-};
-
-exports.moderateReview = async (req, res) => {
-  try {
-    const review = await TransportReview.findOne({
-      where: {
-        id: req.params.reviewId,
-        transportId: req.params.id,
-      },
-    });
-
-    if (!review) {
-      return res.status(404).json({
-        success: false,
-        message: "Review not found",
-      });
-    }
-
-    if (!["approve", "reject"].includes(req.body.action)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid action",
-      });
-    }
-
-    review.status = req.body.action === "approve" ? "approved" : "rejected";
-    await review.save();
-
-    const transport = await Transport.findByPk(req.params.id);
-    const ratingInfo = await transport.getAverageRating();
-
-    res.json({
-      success: true,
-      data: {
-        review,
-        averageRating: ratingInfo.averageRating,
-        reviewCount: ratingInfo.reviewCount,
-      },
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to moderate review",
+      message: "Failed to fetch transports",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

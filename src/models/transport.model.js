@@ -20,6 +20,12 @@ class Transport extends Model {
       as: "reviews",
       onDelete: "CASCADE",
     });
+
+    this.belongsToMany(models.Amenity, {
+      through: models.TransportAmenity,
+      foreignKey: "transportId",
+      as: "amenities",
+    });
   }
 
   async toggleVerified() {
@@ -46,6 +52,35 @@ class Transport extends Model {
       averageRating: parseFloat(result?.get("averageRating") || 0).toFixed(1),
       reviewCount: result?.get("reviewCount") || 0,
     };
+  }
+
+  async addAmenities(amenityIds) {
+    return await this.sequelize.models.TransportAmenity.bulkCreate(
+      amenityIds.map((amenityId) => ({
+        transportId: this.id,
+        amenityId,
+        isAvailable: true,
+      }))
+    );
+  }
+
+  async updateAmenities(amenityUpdates) {
+    const updates = amenityUpdates.map(async (update) => {
+      const [amenity, created] =
+        await this.sequelize.models.TransportAmenity.upsert(
+          {
+            transportId: this.id,
+            amenityId: update.amenityId,
+            isAvailable: update.isAvailable,
+            notes: update.notes,
+          },
+          {
+            returning: true,
+          }
+        );
+      return amenity;
+    });
+    return Promise.all(updates);
   }
 }
 
@@ -184,7 +219,7 @@ Transport.init(
               SELECT COALESCE(AVG(rating), 0)
               FROM transport_reviews
               WHERE 
-                transport_reviews.transportId = transports.id AND
+                transport_reviews.transportId = Transport.id AND
                 transport_reviews.status = 'approved' AND
                 transport_reviews.deletedAt IS NULL
             )`),
@@ -195,7 +230,7 @@ Transport.init(
               SELECT COUNT(*)
               FROM transport_reviews
               WHERE 
-                transport_reviews.transportId = transports.id AND
+                transport_reviews.transportId = Transport.id AND
                 transport_reviews.status = 'approved' AND
                 transport_reviews.deletedAt IS NULL
             )`),
@@ -205,7 +240,25 @@ Transport.init(
       },
     },
     scopes: {
-      // ... (keep your existing scopes)
+      withFullDetails: {
+        include: [
+          "transportType",
+          "images",
+          "amenities",
+          {
+            association: "reviews",
+            where: { status: "approved" },
+            required: false,
+            include: ["user"],
+          },
+        ],
+      },
+      withAmenities: {
+        include: ["amenities"],
+      },
+      withImages: {
+        include: ["images"],
+      },
       withReviews: {
         include: [
           {
@@ -216,13 +269,14 @@ Transport.init(
           },
         ],
       },
-      withFullDetails: {
+      forAdmin: {
+        paranoid: false,
         include: [
           "transportType",
           "images",
+          "amenities",
           {
             association: "reviews",
-            where: { status: "approved" },
             required: false,
             include: ["user"],
           },

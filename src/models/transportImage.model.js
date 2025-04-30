@@ -2,6 +2,9 @@ const { DataTypes, Model } = require("sequelize");
 const { sequelize } = require("../config/database");
 const fs = require('fs');
 const path = require('path');
+const { promisify } = require('util');
+
+const unlinkAsync = promisify(fs.unlink);
 
 class TransportImage extends Model {
   static associate(models) {
@@ -12,14 +15,15 @@ class TransportImage extends Model {
     });
   }
 
+  // Delete file from disk
   async deleteFile() {
     try {
-      const filePath = path.join(__dirname, '../../public', this.imagePath);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      const fullPath = path.join(__dirname, '/', this.imagePath);
+      if (fs.existsSync(fullPath)) {
+        await unlinkAsync(fullPath);
       }
     } catch (error) {
-      console.error('Error deleting image file:', error);
+      console.error('Error deleting image:', error);
     }
   }
 }
@@ -34,24 +38,17 @@ TransportImage.init(
     transportId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: "transports",
-        key: "id",
-      },
     },
     imagePath: {
       type: DataTypes.STRING(255),
       allowNull: false,
       validate: {
-        notEmpty: { msg: "Image path is required" },
+        notEmpty: true,
       },
     },
     isFeatured: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
-    },
-    caption: {
-      type: DataTypes.STRING(100),
     },
     order: {
       type: DataTypes.INTEGER,
@@ -62,15 +59,17 @@ TransportImage.init(
     sequelize,
     tableName: "transport_images",
     timestamps: true,
-    paranoid: true,
     hooks: {
-      beforeDestroy: async (image) => {
+      afterDestroy: async (image) => {
         await image.deleteFile();
       },
-      beforeUpdate: async (image) => {
+      afterUpdate: async (image) => {
         if (image.changed('imagePath')) {
-          const oldImage = await TransportImage.findByPk(image.id);
-          await oldImage.deleteFile();
+          const oldPath = image.previous('imagePath');
+          if (oldPath) {
+            const oldImage = new TransportImage({ imagePath: oldPath });
+            await oldImage.deleteFile();
+          }
         }
       },
     },
