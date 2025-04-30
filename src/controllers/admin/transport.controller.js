@@ -12,60 +12,100 @@ const {
 } = require("../../middlewares/upload");
 
 exports.createTransport = async (req, res) => {
-  // 1. Validate request
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
-    // 2. Create transport record
-    const transport = await Transport.create(req.body);
-
-    // 3. Handle amenities (if provided)
-    if (req.body.amenities && req.body.amenities.length > 0) {
-      await TransportAmenity.bulkCreate(
-        req.body.amenities.map((amenity) => ({
-          transportId: transport.id,
-          amenityId: amenity.amenityId,
-          isAvailable: amenity.isAvailable !== false,
-          notes: amenity.notes || null,
-        }))
-      );
+    // 1. Parse amenities if provided
+    let amenities = [];
+    if (req.body.amenities) {
+      try {
+        amenities = Array.isArray(req.body.amenities)
+          ? req.body.amenities
+          : JSON.parse(req.body.amenities);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid amenities format",
+        });
+      }
     }
 
-    // 4. Process uploaded images
-    if (req.files?.length > 0) {
-      // Move files from temp folder to transport ID folder
-      if (req.body.tempId) {
-        await moveTempFiles(req.body.tempId, transport.id);
+    // 2. Create transport (transaction ensures atomicity)
+    const result = await sequelize.transaction(async (transaction) => {
+      const transport = await Transport.create(req.body, { transaction });
+
+      // 3. Process amenities
+      if (amenities.length > 0) {
+        await TransportAmenity.bulkCreate(
+          amenities.map((amenity) => ({
+            transportId: transport.id,
+            amenityId: amenity.amenityId,
+            isAvailable: amenity.isAvailable !== false,
+            notes: amenity.notes || null,
+          })),
+          { transaction }
+        );
       }
 
-      // Save image records
-      await TransportImage.bulkCreate(
-        req.files.map((file) => ({
-          transportId: transport.id,
-          imagePath: `/uploads/transports/${transport.id}/${file.filename}`,
-          isFeatured: false,
-        }))
-      );
-    }
+      // 4. Process images
+      if (req.files?.length > 0) {
+        const uploadDir = path.join(
+          __dirname,
+          `../../public/uploads/transports/${transport.id}`
+        );
+        fs.mkdirSync(uploadDir, { recursive: true });
 
-    // 5. Return full transport data with relationships
-    const result = await Transport.findByPk(transport.id, {
+        await TransportImage.bulkCreate(
+          req.files.map((file) => {
+            const newPath = path.join(uploadDir, file.filename);
+            fs.renameSync(file.path, newPath);
+
+            return {
+              transportId: transport.id,
+              imagePath: `/uploads/transports/${transport.id}/${file.filename}`,
+              isFeatured: false,
+            };
+          }),
+          { transaction }
+        );
+      }
+
+      return transport;
+    });
+
+    // 5. Fetch complete data
+    const transport = await Transport.findByPk(result.id, {
       include: ["images", "amenities"],
     });
 
     res.status(201).json({
       success: true,
-      data: result,
+      data: transport,
     });
   } catch (error) {
-    console.error("Transport creation failed:", error);
+    console.error("Creation error:", {
+      message: error.message,
+      stack: error.stack,
+      ...(error.errors && { errors: error.errors }),
+    });
+
+    // Cleanup files if error occurred
+    if (req.files) {
+      req.files.forEach((file) => {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Failed to create transport",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      ...(process.env.NODE_ENV === "development" && {
+        error: error.message,
+        ...(error.errors && { details: error.errors }),
+      }),
     });
   }
 };
