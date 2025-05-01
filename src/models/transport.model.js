@@ -15,6 +15,12 @@ class Transport extends Model {
       otherKey: "amenityId",
       as: "amenities",
     });
+
+    this.hasMany(models.TransportImage, {
+      foreignKey: "transportId",
+      as: "images",
+      onDelete: "CASCADE",
+    });
   }
 
   // Helper method to add amenities
@@ -42,6 +48,35 @@ class Transport extends Model {
           { returning: true }
         );
       return amenity;
+    });
+    return Promise.all(updates);
+  }
+
+  async addImages(images) {
+    return await this.sequelize.models.TransportImage.bulkCreate(
+      images.map((image) => ({
+        transportId: this.id,
+        ...image,
+      }))
+    );
+  }
+
+  async updateImages(imageUpdates) {
+    const updates = imageUpdates.map(async (update) => {
+      if (update.id) {
+        // Update existing image
+        const image = await this.sequelize.models.TransportImage.findOne({
+          where: { id: update.id, transportId: this.id },
+        });
+        if (!image) throw new Error(`Image with ID ${update.id} not found`);
+        return await image.update(update);
+      } else {
+        // Create new image
+        return await this.sequelize.models.TransportImage.create({
+          transportId: this.id,
+          ...update,
+        });
+      }
     });
     return Promise.all(updates);
   }

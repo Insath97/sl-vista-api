@@ -6,31 +6,64 @@ const authMiddleware = require("../../middlewares/authMiddleware");
 
 router.use(authMiddleware);
 
+// Create transport
 router.post("/", validate.create, controller.createTransport);
 
+// Get all transports
 router.get("/", validate.list, controller.getAllTransports);
 
+// Get transport by ID
 router.get("/:id", validate.getById, controller.getTransportById);
 
+// Update transport
 router.put("/:id", validate.update, controller.updateTransport);
 
+// Delete transport
 router.delete("/:id", validate.delete, controller.deleteTransport);
 
-router.patch("/restore/:id", controller.restoreTransport);
+// Restore transport
+router.patch("/restore/:id", validate.restore, controller.restoreTransport);
 
+// Toggle active status
 router.patch(
-  "/status/:id",
-  validate.toggleStatus,
+  "/status/:id", 
+  validate.toggleStatus, 
   controller.toggleActiveStatus
 );
 
-/* vista verify */
-router.patch("/:id/verify", validate.verify, controller.verifyTransport);
+// Verify transport
+router.patch(
+  "/:id/verify", 
+  validate.verify, 
+  controller.verifyTransport
+);
 
+// Update amenities
 router.patch(
   "/:id/amenities",
   validate.updateAmenities,
   controller.updateTransportAmenities
+);
+
+// Update images
+router.patch(
+  "/:id/images",
+  validate.updateImages,
+  controller.updateTransportImages
+);
+
+// Delete image
+router.delete(
+  "/:id/images/:imageId",
+  validate.deleteImage,
+  controller.deleteTransportImage
+);
+
+// Set featured image
+router.patch(
+  "/:id/images/:imageId/featured",
+  validate.setFeaturedImage,
+  controller.setFeaturedImage
 );
 
 module.exports = router;

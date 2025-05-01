@@ -4,8 +4,9 @@ const slugify = require("slugify");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
 const Amenity = require("../../models/amenity.model");
+const TransportImage = require("../../models/transportImage.model");
 
-/* Create transport*/
+/* Create transport with images and amenities */
 exports.createTransport = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -13,7 +14,7 @@ exports.createTransport = async (req, res) => {
   }
 
   try {
-    const { amenities, ...transportData } = req.body;
+    const { images, amenities, ...transportData } = req.body;
 
     // Generate slug if not provided
     if (!transportData.slug && transportData.title) {
@@ -26,23 +27,29 @@ exports.createTransport = async (req, res) => {
 
     const transport = await Transport.create(transportData);
 
+    // Add images if provided
+    if (images && images.length) {
+      await transport.addImages(images);
+    }
+
     // Add amenities if provided
     if (amenities && amenities.length) {
       await transport.addAmenities(amenities);
     }
 
-    // Fetch the transport with amenities
-    const transportWithAmenities = await Transport.findByPk(transport.id, {
+    // Fetch the transport with all associations
+    const transportWithAssociations = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
+        { model: TransportImage, as: "images" },
       ],
     });
 
     return res.status(201).json({
       success: true,
       message: "Transport created successfully",
-      data: transportWithAmenities,
+      data: transportWithAssociations,
     });
   } catch (error) {
     console.error("Error creating transport:", error);
@@ -54,7 +61,7 @@ exports.createTransport = async (req, res) => {
   }
 };
 
-/* Get all transports */
+/* Get all transports with optional images */
 exports.getAllTransports = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -71,6 +78,7 @@ exports.getAllTransports = async (req, res) => {
       isActive,
       vistaVerified,
       includeDeleted,
+      includeImages,
       page = 1,
       limit = 10,
       search,
@@ -89,15 +97,23 @@ exports.getAllTransports = async (req, res) => {
       },
     ];
 
+    // Conditionally include images
+    if (includeImages === "true") {
+      include.push({ 
+        model: TransportImage, 
+        as: "images",
+        order: [["sortOrder", "ASC"]]
+      });
+    }
+
+    // Filter conditions
     if (transportTypeId) where.transportTypeId = transportTypeId;
-    if (departureCity)
-      where.departureCity = { [Op.iLike]: `%${departureCity}%` };
+    if (departureCity) where.departureCity = { [Op.iLike]: `%${departureCity}%` };
     if (arrivalCity) where.arrivalCity = { [Op.iLike]: `%${arrivalCity}%` };
     if (minSeats) where.seatCount = { [Op.gte]: minSeats };
     if (maxPrice) where.pricePerKmUSD = { [Op.lte]: maxPrice };
     if (isActive !== undefined) where.isActive = isActive === "true";
-    if (vistaVerified !== undefined)
-      where.vistaVerified = vistaVerified === "true";
+    if (vistaVerified !== undefined) where.vistaVerified = vistaVerified === "true";
     if (search) {
       where[Op.or] = [
         { title: { [Op.iLike]: `%${search}%` } },
@@ -116,9 +132,7 @@ exports.getAllTransports = async (req, res) => {
       paranoid: includeDeleted !== "true",
     };
 
-    const { count, rows: transports } = await Transport.findAndCountAll(
-      options
-    );
+    const { count, rows: transports } = await Transport.findAndCountAll(options);
 
     return res.status(200).json({
       success: true,
@@ -139,7 +153,7 @@ exports.getAllTransports = async (req, res) => {
   }
 };
 
-/* Get transport by ID */
+/* Get transport by ID with images */
 exports.getTransportById = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -153,6 +167,11 @@ exports.getTransportById = async (req, res) => {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
+        { 
+          model: TransportImage, 
+          as: "images",
+          order: [["sortOrder", "ASC"]]
+        }
       ],
       paranoid: includeDeleted !== "true",
     };
@@ -179,7 +198,7 @@ exports.getTransportById = async (req, res) => {
   }
 };
 
-/* Update transport - Modified to handle vistaVerified */
+/* Update transport with optional images */
 exports.updateTransport = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -195,14 +214,10 @@ exports.updateTransport = async (req, res) => {
       });
     }
 
-    const { amenities, ...updateData } = req.body;
+    const { amenities, images, ...updateData } = req.body;
 
     // Generate new slug if title is being updated and slug isn't provided
-    if (
-      updateData.title &&
-      !updateData.slug &&
-      updateData.title !== transport.title
-    ) {
+    if (updateData.title && !updateData.slug && updateData.title !== transport.title) {
       updateData.slug = slugify(updateData.title, {
         lower: true,
         strict: true,
@@ -226,6 +241,7 @@ exports.updateTransport = async (req, res) => {
       }
     }
 
+    // Prevent direct modification of vistaVerified unless through verify endpoint
     if ("vistaVerified" in updateData) {
       delete updateData.vistaVerified;
     }
@@ -235,6 +251,11 @@ exports.updateTransport = async (req, res) => {
       await transport.setAmenities(amenities);
     }
 
+    // Handle images if provided
+    if (images) {
+      await transport.updateImages(images);
+    }
+
     await transport.update(updateData);
 
     // Fetch the updated record with associations
@@ -242,6 +263,7 @@ exports.updateTransport = async (req, res) => {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
+        { model: TransportImage, as: "images" },
       ],
     });
 
@@ -260,7 +282,7 @@ exports.updateTransport = async (req, res) => {
   }
 };
 
-/* Delete transport */
+/* Delete transport (images are cascade deleted) */
 exports.deleteTransport = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -290,7 +312,7 @@ exports.deleteTransport = async (req, res) => {
   }
 };
 
-/* Restore soft-deleted transport */
+/* Restore soft-deleted transport with images */
 exports.restoreTransport = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -323,6 +345,7 @@ exports.restoreTransport = async (req, res) => {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
+        { model: TransportImage, as: "images" },
       ],
     });
 
@@ -393,10 +416,9 @@ exports.verifyTransport = async (req, res) => {
     }
 
     // Toggle verification status or set based on request body
-    const newVerifiedStatus =
-      req.body.verified !== undefined
-        ? req.body.verified
-        : !transport.vistaVerified;
+    const newVerifiedStatus = req.body.verified !== undefined 
+      ? req.body.verified 
+      : !transport.vistaVerified;
 
     await transport.update({ vistaVerified: newVerifiedStatus });
 
@@ -447,8 +469,7 @@ exports.updateTransportAmenities = async (req, res) => {
             await transport.sequelize.models.TransportAmenity.upsert({
               transportId: transport.id,
               amenityId: amenity.amenityId,
-              isAvailable:
-                amenity.isAvailable !== undefined ? amenity.isAvailable : true,
+              isAvailable: amenity.isAvailable !== undefined ? amenity.isAvailable : true,
               notes: amenity.notes || null,
             });
           })
@@ -456,15 +477,16 @@ exports.updateTransportAmenities = async (req, res) => {
       }
     }
 
-    // Fetch the updated transport with amenities
+    // Fetch the updated transport with all associations
     const updatedTransport = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
-        {
-          model: Amenity,
+        { 
+          model: Amenity, 
           as: "amenities",
-          through: { attributes: ["isAvailable", "notes"] },
+          through: { attributes: ["isAvailable", "notes"] }
         },
+        { model: TransportImage, as: "images" }
       ],
     });
 
@@ -478,6 +500,141 @@ exports.updateTransportAmenities = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update transport amenities",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update transport images */
+exports.updateTransportImages = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const transport = await Transport.findByPk(req.params.id);
+    if (!transport) {
+      return res.status(404).json({
+        success: false,
+        message: "Transport not found",
+      });
+    }
+
+    const { images } = req.body;
+    
+    if (images) {
+      await transport.updateImages(images);
+    }
+
+    // Fetch the updated transport with all associations
+    const updatedTransport = await Transport.findByPk(transport.id, {
+      include: [
+        { model: TransportType, as: "transportType" },
+        { model: Amenity, as: "amenities" },
+        { model: TransportImage, as: "images" }
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Transport images updated successfully",
+      data: updatedTransport,
+    });
+  } catch (error) {
+    console.error("Error updating transport images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update transport images",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Delete transport image */
+exports.deleteTransportImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const image = await TransportImage.findOne({
+      where: { 
+        id: req.params.imageId,
+        transportId: req.params.id
+      }
+    });
+
+    if (!image) {
+      return res.status(404).json({
+        success: false,
+        message: "Image not found for this transport",
+      });
+    }
+
+    await image.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: "Transport image deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting transport image:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete transport image",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Set featured image */
+exports.setFeaturedImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    // First unset any currently featured image
+    await TransportImage.update(
+      { isFeatured: false },
+      { 
+        where: { 
+          transportId: req.params.id,
+          isFeatured: true
+        } 
+      }
+    );
+
+    // Set the new featured image
+    const [affectedCount] = await TransportImage.update(
+      { isFeatured: true },
+      { 
+        where: { 
+          id: req.params.imageId,
+          transportId: req.params.id
+        } 
+      }
+    );
+
+    if (affectedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Image not found for this transport",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Featured image set successfully",
+    });
+  } catch (error) {
+    console.error("Error setting featured image:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to set featured image",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }

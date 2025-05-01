@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
 const Amenity = require("../../models/amenity.model");
+const TransportImage = require("../../models/transportImage.model");
 
 // Common validation rules
 const idParam = param("id")
@@ -154,6 +155,11 @@ const queryValidations = [
     .isString()
     .withMessage("Amenities filter must be a comma-separated string of IDs"),
 
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean"),
+
   query("search")
     .optional()
     .trim()
@@ -197,7 +203,7 @@ const amenityValidations = [
     .optional()
     .isArray()
     .withMessage("Amenities must be an array"),
-  
+
   body("amenities.*.amenityId")
     .isInt()
     .withMessage("Amenity ID must be an integer")
@@ -220,12 +226,65 @@ const amenityValidations = [
     .withMessage("Notes must be less than 500 characters"),
 ];
 
+// Image validations
+const imageValidations = [
+  body("images")
+    .optional()
+    .isArray()
+    .withMessage("Images must be an array"),
+  
+  body("images.*.imageUrl")
+    .isURL()
+    .withMessage("Image URL must be a valid URL")
+    .isLength({ max: 512 })
+    .withMessage("Image URL must be less than 512 characters"),
+  
+  body("images.*.caption")
+    .optional()
+    .isString()
+    .withMessage("Caption must be a string")
+    .isLength({ max: 255 })
+    .withMessage("Caption must be less than 255 characters"),
+  
+  body("images.*.isFeatured")
+    .optional()
+    .isBoolean()
+    .withMessage("isFeatured must be a boolean"),
+  
+  body("images.*.sortOrder")
+    .optional()
+    .isInt()
+    .withMessage("sortOrder must be an integer"),
+];
+
 const updateAmenitiesValidation = [
   param("id").isInt().withMessage("Invalid transport ID"),
-  ...amenityValidations,
   body("amenities")
     .isArray({ min: 1 })
     .withMessage("Amenities array cannot be empty"),
+  ...amenityValidations,
+];
+
+const updateImagesValidation = [
+  param("id").isInt().withMessage("Invalid transport ID"),
+  body("images")
+    .isArray({ min: 1 })
+    .withMessage("Images array cannot be empty"),
+  ...imageValidations,
+  body("images.*.id")
+    .optional()
+    .isInt()
+    .withMessage("Image ID must be an integer"),
+];
+
+const deleteImageValidation = [
+  param("id").isInt().withMessage("Invalid transport ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
+];
+
+const setFeaturedImageValidation = [
+  param("id").isInt().withMessage("Invalid transport ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
 ];
 
 module.exports = {
@@ -237,6 +296,7 @@ module.exports = {
     ...validateCoordinates,
     ...transportValidations,
     ...amenityValidations,
+    ...imageValidations
   ],
 
   // Update Transport
@@ -248,6 +308,7 @@ module.exports = {
     ...validateCoordinates.map((v) => v.optional()),
     ...transportValidations.map((v) => v.optional()),
     ...amenityValidations.map((v) => v.optional()),
+    ...imageValidations.map((v) => v.optional()),
   ],
 
   // Get by ID
@@ -282,4 +343,13 @@ module.exports = {
       .isBoolean()
       .withMessage("verified must be a boolean"),
   ],
+
+  // Update Images
+  updateImages: updateImagesValidation,
+
+  // Delete Image
+  deleteImage: deleteImageValidation,
+
+  // Set Featured Image
+  setFeaturedImage: setFeaturedImageValidation,
 };
