@@ -7,11 +7,10 @@ const { uploadTransportImages } = require("../../middlewares/upload");
 const authMiddleware = require("../../middlewares/authMiddleware");
 
 // Apply authentication to all routes
-router.use(authMiddleware);
+
 
 router.post(
   "/",
-  validate.create,
   uploadTransportImages,
   controller.createTransport
 );

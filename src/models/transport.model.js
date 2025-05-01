@@ -284,16 +284,20 @@ Transport.init(
       },
     },
     hooks: {
-      beforeValidate: (transport) => {
+    /*   beforeValidate: (transport) => {
+        if (!transport.title) {
+          throw new Error('Title is required for slug generation');
+        }
+        
         if (transport.changed("title") || !transport.slug) {
-          transport.slug = slugify(transport.title, {
+          transport.slug = slugify(transport.title.toString(), { // Ensure title is string
             lower: true,
             strict: true,
             remove: /[*+~.()'"!:@]/g,
           });
         }
-      },
-    },
+      }, */
+    }
   }
 );
 

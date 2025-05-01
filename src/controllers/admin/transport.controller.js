@@ -1,4 +1,5 @@
 const { Op } = require("sequelize");
+const { sequelize } = require("../../config/database");
 const { validationResult } = require("express-validator");
 
 const TransportType = require("../../models/transportType.model");
@@ -109,7 +110,6 @@ exports.createTransport = async (req, res) => {
     });
   }
 };
-
 exports.getAllTransports = async (req, res) => {
   try {
     const {
