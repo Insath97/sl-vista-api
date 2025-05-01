@@ -27,7 +27,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://your-domain.com"],
+    origin: ["http://localhost:3000", "https://slvista-admin.vercel.app/", "https://slvista-test.vercel.app/"],
     credentials: true,
   })
 );
