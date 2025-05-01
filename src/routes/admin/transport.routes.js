@@ -11,6 +11,7 @@ const authMiddleware = require("../../middlewares/authMiddleware");
 
 router.post(
   "/",
+  validate.create,
   uploadTransportImages,
   controller.createTransport
 );

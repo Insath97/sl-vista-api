@@ -103,10 +103,6 @@ Transport.init(
     title: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      validate: {
-        notEmpty: { msg: "Title cannot be empty" },
-        len: { args: [2, 100], msg: "Title must be 2-100 characters" },
-      },
       set(value) {
         this.setDataValue("title", value.trim());
         if (!this.slug) {
@@ -187,18 +183,12 @@ Transport.init(
     latitude: {
       type: DataTypes.DECIMAL(9, 6),
       allowNull: false,
-      validate: {
-        min: { args: [-90], msg: "Invalid latitude" },
-        max: { args: [90], msg: "Invalid latitude" },
-      },
+     
     },
     longitude: {
       type: DataTypes.DECIMAL(9, 6),
       allowNull: false,
-      validate: {
-        min: { args: [-180], msg: "Invalid longitude" },
-        max: { args: [180], msg: "Invalid longitude" },
-      },
+      
     },
     isActive: {
       type: DataTypes.BOOLEAN,
