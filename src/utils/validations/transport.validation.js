@@ -3,23 +3,17 @@ const { Op } = require("sequelize");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
 
+// Common validation rules
 const idParam = param("id")
   .isInt()
   .withMessage("Invalid ID format")
   .custom(async (value, { req }) => {
     const transport = await Transport.findOne({
       where: { id: value },
-      paranoid:
-        req.method === "GET" && req.query.includeDeleted === "true"
-          ? false
-          : true,
+      paranoid: req.query.includeDeleted === "true" ? false : true,
     });
     if (!transport) throw new Error("Transport not found");
   });
-
-const reviewIdParam = param("reviewId")
-  .isInt()
-  .withMessage("Invalid review ID format");
 
 const transportTypeExists = body("transportTypeId")
   .isInt()
@@ -29,158 +23,196 @@ const transportTypeExists = body("transportTypeId")
     if (!exists) throw new Error("Transport type not found");
   });
 
-const uniqueTitle = body("title")
+const validateTitle = body("title")
   .trim()
   .isLength({ min: 2, max: 100 })
   .withMessage("Title must be 2-100 characters")
   .custom(async (value, { req }) => {
     const where = {
       title: value,
-      transportTypeId:
-        req.body.transportTypeId || req.transport?.transportTypeId,
-      [Op.not]: { id: req.params?.id ? [req.params.id] : [] },
+      [Op.not]: { id: req.params?.id || 0 },
     };
     const exists = await Transport.findOne({ where });
-    if (exists) throw new Error("Title already exists for this transport type");
+    if (exists) throw new Error("Title already exists");
   });
 
-const basicValidations = [
+const validateSlug = body("slug")
+  .optional()
+  .trim()
+  .matches(/^[a-z0-9-]+$/)
+  .withMessage("Slug can only contain lowercase letters, numbers and hyphens")
+  .isLength({ max: 100 })
+  .withMessage("Slug must be less than 100 characters");
+
+const validateCoordinates = [
+  body("latitude")
+    .isDecimal()
+    .withMessage("Invalid latitude format")
+    .custom((value) => {
+      if (value < -90 || value > 90)
+        throw new Error("Latitude must be between -90 and 90");
+      return true;
+    }),
+  body("longitude")
+    .isDecimal()
+    .withMessage("Invalid longitude format")
+    .custom((value) => {
+      if (value < -180 || value > 180)
+        throw new Error("Longitude must be between -180 and 180");
+      return true;
+    }),
+];
+
+// Transport basic validations
+const transportValidations = [
   body("operatorName")
     .trim()
     .notEmpty()
     .withMessage("Operator name is required")
-    .isLength({ max: 100 }),
+    .isLength({ max: 100 })
+    .withMessage("Operator name must be less than 100 characters"),
 
   body("pricePerKmUSD")
+    .isDecimal({ decimal_digits: "2" })
+    .withMessage("Price must be a decimal with 2 digits")
     .isFloat({ min: 0 })
-    .withMessage("Price must be a positive number"),
+    .withMessage("Price must be positive"),
+
+  body("seatCount")
+    .isInt({ min: 1 })
+    .withMessage("Seat count must be a positive integer"),
 
   body("phone")
     .trim()
     .notEmpty()
     .withMessage("Phone is required")
-    .isLength({ max: 20 }),
+    .isLength({ max: 20 })
+    .withMessage("Phone must be less than 20 characters"),
 
-  body("email").optional().trim().isEmail().withMessage("Invalid email format"),
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be less than 100 characters"),
 
-  body("website").optional().trim().isURL().withMessage("Invalid website URL"),
+  body("website")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid website URL")
+    .isLength({ max: 255 })
+    .withMessage("Website URL must be less than 255 characters"),
+
+  body("description")
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage("Description must be less than 2000 characters"),
 
   body("departureCity")
     .trim()
     .notEmpty()
-    .withMessage("Departure city is required"),
+    .withMessage("Departure city is required")
+    .isLength({ max: 100 })
+    .withMessage("Departure city must be less than 100 characters"),
 
-  body("arrivalCity").trim().notEmpty().withMessage("Arrival city is required"),
-
-  body("latitude")
-    .isFloat({ min: -90, max: 90 })
-    .withMessage("Invalid latitude (-90 to 90)"),
-
-  body("longitude")
-    .isFloat({ min: -180, max: 180 })
-    .withMessage("Invalid longitude (-180 to 180)"),
+  body("arrivalCity")
+    .trim()
+    .notEmpty()
+    .withMessage("Arrival city is required")
+    .isLength({ max: 100 })
+    .withMessage("Arrival city must be less than 100 characters"),
 
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean"),
-
-  body("vistaVerified")
-    .optional()
-    .isBoolean()
-    .withMessage("vistaVerified must be a boolean"),
+    .withMessage("isActive must be a boolean value"),
 ];
 
-const reviewValidations = [
-  body("rating")
-    .isFloat({ min: 1, max: 5 })
-    .withMessage("Rating must be between 1 and 5"),
+// Query validations
+const queryValidations = [
+  query("includeInactive")
+    .optional()
+    .isBoolean()
+    .withMessage("includeInactive must be a boolean"),
 
-  body("text")
+  query("transportTypeId")
+    .optional()
+    .isInt()
+    .withMessage("transportTypeId must be an integer"),
+
+  query("search")
+    .optional()
     .trim()
-    .isLength({ min: 10, max: 2000 })
-    .withMessage("Review must be between 10 and 2000 characters"),
+    .isLength({ max: 100 })
+    .withMessage("Search query too long"),
 
-  body("isAnonymous")
+  query("includeDeleted")
     .optional()
     .isBoolean()
-    .withMessage("isAnonymous must be a boolean"),
-];
+    .withMessage("includeDeleted must be a boolean"),
 
-const moderateReviewValidation = [
-  body("action")
-    .isIn(["approve", "reject"])
-    .withMessage('Action must be either "approve" or "reject"'),
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("minSeats")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("minSeats must be a positive integer"),
+
+  query("maxPrice")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("maxPrice must be a positive number"),
 ];
 
 module.exports = {
-  create: [transportTypeExists, uniqueTitle, ...basicValidations],
+  // Create Transport
+  create: [
+    transportTypeExists,
+    validateTitle,
+    validateSlug,
+    ...validateCoordinates,
+    ...transportValidations,
+  ],
 
+  // Update Transport
   update: [
     idParam,
     transportTypeExists.optional(),
-    uniqueTitle.optional(),
-    ...basicValidations.map((validation) => validation.optional()),
+    validateTitle.optional(),
+    validateSlug,
+    ...validateCoordinates.map((v) => v.optional()),
+    ...transportValidations.map((v) => v.optional()),
   ],
 
-  getById: [idParam],
-
-  delete: [idParam],
-
-  restore: [idParam],
-
-  toggleStatus: [idParam],
-
-  addReview: [idParam, ...reviewValidations],
-
-  getReviews: [
+  // Get by ID
+  getById: [
     idParam,
-    query("status")
-      .optional()
-      .isIn(["pending", "approved", "rejected", "all"])
-      .withMessage("Invalid status value"),
-    query("page")
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage("Page must be a positive integer"),
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage("Limit must be between 1 and 100"),
-  ],
-
-  moderateReview: [idParam, reviewIdParam, ...moderateReviewValidation],
-
-  list: [
-    query("includeInactive")
-      .optional()
-      .isBoolean()
-      .withMessage("includeInactive must be a boolean"),
-
-    query("transportType")
-      .optional()
-      .isInt()
-      .withMessage("transportType must be an integer"),
-
-    query("search")
-      .optional()
-      .trim()
-      .isLength({ max: 100 })
-      .withMessage("Search query too long"),
-
     query("includeDeleted")
       .optional()
       .isBoolean()
       .withMessage("includeDeleted must be a boolean"),
-
-    query("page")
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage("Page must be a positive integer"),
-
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage("Limit must be between 1 and 100"),
   ],
+
+  // Delete Transport
+  delete: [idParam],
+
+  // List Transports
+  list: queryValidations,
+
+  // Toggle Active Status
+  toggleStatus: [idParam],
+
+  // Restore Soft-deleted Transport
+  restore: [idParam],
 };

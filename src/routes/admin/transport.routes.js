@@ -1,21 +1,31 @@
-// routes/transportRoutes.js
 const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/transport.controller");
 const validate = require("../../utils/validations/transport.validation");
-const { uploadTransportImages } = require("../../middlewares/upload");
 const authMiddleware = require("../../middlewares/authMiddleware");
 
-// Apply authentication to all routes
 
+router.use(authMiddleware);
 
-router.post(
-  "/",
-  validate.create,
-  uploadTransportImages,
-  controller.createTransport
-);
+router.post("/", validate.create, controller.createTransport);
 
 router.get("/", validate.list, controller.getAllTransports);
+
+router.get("/:id", validate.getById, controller.getTransportById);
+
+router.put("/:id", validate.update, controller.updateTransport);
+
+router.delete("/:id", validate.delete, controller.deleteTransport);
+
+router.patch("/restore/:id", controller.restoreTransport);
+
+router.patch(
+  "/status/:id",
+  validate.toggleStatus,
+  controller.toggleActiveStatus
+);
+
+/* vista verify */
+router.patch("/:id/verify", validate.getById, controller.verifyTransport);
 
 module.exports = router;

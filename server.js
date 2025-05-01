@@ -20,14 +20,16 @@ const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportRoutes = require("./src/routes/admin/transport.routes");
 
-
 const app = express();
 
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
 app.use(
-  cors({ origin: ["http://localhost:3000", "https://your-domain.com"], credentials: true })
+  cors({
+    origin: ["http://localhost:3000", "https://your-domain.com"],
+    credentials: true,
+  })
 );
 app.use(express.urlencoded({ extended: true }));
 
@@ -45,7 +47,6 @@ app.use("/api/v1/admin", adminMerchantRoutes);
 app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
 app.use("/api/v1/admin/transports", transportRoutes);
-
 
 // merchnat routes
 app.use("/api/v1/merchants", merchantRoutes);
