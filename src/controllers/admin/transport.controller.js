@@ -3,9 +3,9 @@ const { validationResult } = require("express-validator");
 const slugify = require("slugify");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
+const Amenity = require("../../models/amenity.model");
 
-/* Create transport */
-/* Create transport */
+/* Create transport*/
 exports.createTransport = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -13,12 +13,9 @@ exports.createTransport = async (req, res) => {
   }
 
   try {
-    // Generate slug if not provided and set default vistaVerified to false
-    const transportData = {
-      ...req.body,
-      vistaVerified: req.body.vistaVerified || false, // Default to false if not provided
-    };
+    const { amenities, ...transportData } = req.body;
 
+    // Generate slug if not provided
     if (!transportData.slug && transportData.title) {
       transportData.slug = slugify(transportData.title, {
         lower: true,
@@ -29,10 +26,23 @@ exports.createTransport = async (req, res) => {
 
     const transport = await Transport.create(transportData);
 
+    // Add amenities if provided
+    if (amenities && amenities.length) {
+      await transport.addAmenities(amenities);
+    }
+
+    // Fetch the transport with amenities
+    const transportWithAmenities = await Transport.findByPk(transport.id, {
+      include: [
+        { model: TransportType, as: "transportType" },
+        { model: Amenity, as: "amenities" },
+      ],
+    });
+
     return res.status(201).json({
       success: true,
       message: "Transport created successfully",
-      data: transport,
+      data: transportWithAmenities,
     });
   } catch (error) {
     console.error("Error creating transport:", error);
@@ -44,7 +54,7 @@ exports.createTransport = async (req, res) => {
   }
 };
 
-/* Get all transports - Updated to include vistaVerified in filtering */
+/* Get all transports */
 exports.getAllTransports = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -64,10 +74,20 @@ exports.getAllTransports = async (req, res) => {
       page = 1,
       limit = 10,
       search,
+      amenities,
     } = req.query;
 
     const where = {};
-    const include = [];
+    const include = [
+      { model: TransportType, as: "transportType" },
+      {
+        model: Amenity,
+        as: "amenities",
+        where: amenities ? { id: { [Op.in]: amenities.split(",") } } : {},
+        required: !!amenities,
+        through: { attributes: ["isAvailable", "notes"] },
+      },
+    ];
 
     if (transportTypeId) where.transportTypeId = transportTypeId;
     if (departureCity)
@@ -86,10 +106,10 @@ exports.getAllTransports = async (req, res) => {
       ];
     }
 
-    // ... rest of the getAllTransports implementation remains the same ...
     const options = {
       where,
       include,
+      distinct: true,
       order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
       offset: (parseInt(page) - 1) * parseInt(limit),
@@ -130,7 +150,10 @@ exports.getTransportById = async (req, res) => {
     const { includeDeleted } = req.query;
     const options = {
       where: { id: req.params.id },
-      include: [{ model: TransportType, as: "transportType" }],
+      include: [
+        { model: TransportType, as: "transportType" },
+        { model: Amenity, as: "amenities" },
+      ],
       paranoid: includeDeleted !== "true",
     };
 
@@ -172,7 +195,7 @@ exports.updateTransport = async (req, res) => {
       });
     }
 
-    const updateData = { ...req.body };
+    const { amenities, ...updateData } = req.body;
 
     // Generate new slug if title is being updated and slug isn't provided
     if (
@@ -203,16 +226,23 @@ exports.updateTransport = async (req, res) => {
       }
     }
 
-    // Prevent direct modification of vistaVerified unless through verify endpoint
     if ("vistaVerified" in updateData) {
       delete updateData.vistaVerified;
+    }
+
+    // Handle amenities if provided
+    if (amenities) {
+      await transport.setAmenities(amenities);
     }
 
     await transport.update(updateData);
 
     // Fetch the updated record with associations
     const updatedTransport = await Transport.findByPk(req.params.id, {
-      include: [{ model: TransportType, as: "transportType" }],
+      include: [
+        { model: TransportType, as: "transportType" },
+        { model: Amenity, as: "amenities" },
+      ],
     });
 
     return res.status(200).json({
@@ -229,6 +259,7 @@ exports.updateTransport = async (req, res) => {
     });
   }
 };
+
 /* Delete transport */
 exports.deleteTransport = async (req, res) => {
   const errors = validationResult(req);
@@ -289,7 +320,10 @@ exports.restoreTransport = async (req, res) => {
     await transport.restore();
 
     const restoredTransport = await Transport.findByPk(req.params.id, {
-      include: [{ model: TransportType, as: "transportType" }],
+      include: [
+        { model: TransportType, as: "transportType" },
+        { model: Amenity, as: "amenities" },
+      ],
     });
 
     return res.status(200).json({
@@ -379,6 +413,71 @@ exports.verifyTransport = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update verification status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update transport amenities */
+exports.updateTransportAmenities = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const transport = await Transport.findByPk(req.params.id);
+    if (!transport) {
+      return res.status(404).json({
+        success: false,
+        message: "Transport not found",
+      });
+    }
+
+    const { amenities } = req.body;
+
+    // Clear existing amenities if empty array is provided
+    if (Array.isArray(amenities)) {
+      if (amenities.length === 0) {
+        await transport.setAmenities([]);
+      } else {
+        // Update amenities with their specific attributes
+        await Promise.all(
+          amenities.map(async (amenity) => {
+            await transport.sequelize.models.TransportAmenity.upsert({
+              transportId: transport.id,
+              amenityId: amenity.amenityId,
+              isAvailable:
+                amenity.isAvailable !== undefined ? amenity.isAvailable : true,
+              notes: amenity.notes || null,
+            });
+          })
+        );
+      }
+    }
+
+    // Fetch the updated transport with amenities
+    const updatedTransport = await Transport.findByPk(transport.id, {
+      include: [
+        { model: TransportType, as: "transportType" },
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Transport amenities updated successfully",
+      data: updatedTransport,
+    });
+  } catch (error) {
+    console.error("Error updating transport amenities:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update transport amenities",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }

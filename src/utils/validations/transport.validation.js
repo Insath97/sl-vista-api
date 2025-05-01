@@ -2,6 +2,7 @@ const { body, param, query } = require("express-validator");
 const { Op } = require("sequelize");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
+const Amenity = require("../../models/amenity.model");
 
 // Common validation rules
 const idParam = param("id")
@@ -129,6 +130,11 @@ const transportValidations = [
     .optional()
     .isBoolean()
     .withMessage("isActive must be a boolean value"),
+
+  body("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean value"),
 ];
 
 // Query validations
@@ -142,6 +148,11 @@ const queryValidations = [
     .optional()
     .isInt()
     .withMessage("transportTypeId must be an integer"),
+
+  query("amenities")
+    .optional()
+    .isString()
+    .withMessage("Amenities filter must be a comma-separated string of IDs"),
 
   query("search")
     .optional()
@@ -173,6 +184,48 @@ const queryValidations = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("maxPrice must be a positive number"),
+
+  query("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean"),
+];
+
+// Amenity validations
+const amenityValidations = [
+  body("amenities")
+    .optional()
+    .isArray()
+    .withMessage("Amenities must be an array"),
+  
+  body("amenities.*.amenityId")
+    .isInt()
+    .withMessage("Amenity ID must be an integer")
+    .custom(async (value) => {
+      const amenity = await Amenity.findByPk(value);
+      if (!amenity) throw new Error(`Amenity with ID ${value} not found`);
+      return true;
+    }),
+
+  body("amenities.*.isAvailable")
+    .optional()
+    .isBoolean()
+    .withMessage("isAvailable must be a boolean"),
+
+  body("amenities.*.notes")
+    .optional()
+    .isString()
+    .withMessage("Notes must be a string")
+    .isLength({ max: 500 })
+    .withMessage("Notes must be less than 500 characters"),
+];
+
+const updateAmenitiesValidation = [
+  param("id").isInt().withMessage("Invalid transport ID"),
+  ...amenityValidations,
+  body("amenities")
+    .isArray({ min: 1 })
+    .withMessage("Amenities array cannot be empty"),
 ];
 
 module.exports = {
@@ -183,6 +236,7 @@ module.exports = {
     validateSlug,
     ...validateCoordinates,
     ...transportValidations,
+    ...amenityValidations,
   ],
 
   // Update Transport
@@ -193,6 +247,7 @@ module.exports = {
     validateSlug,
     ...validateCoordinates.map((v) => v.optional()),
     ...transportValidations.map((v) => v.optional()),
+    ...amenityValidations.map((v) => v.optional()),
   ],
 
   // Get by ID
@@ -215,4 +270,16 @@ module.exports = {
 
   // Restore Soft-deleted Transport
   restore: [idParam],
+
+  // Update Amenities
+  updateAmenities: updateAmenitiesValidation,
+
+  // Verify Transport
+  verify: [
+    idParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean"),
+  ],
 };

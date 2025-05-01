@@ -8,6 +8,42 @@ class Transport extends Model {
       foreignKey: "transportTypeId",
       as: "transportType",
     });
+
+    this.belongsToMany(models.Amenity, {
+      through: models.TransportAmenity,
+      foreignKey: "transportId",
+      otherKey: "amenityId",
+      as: "amenities",
+    });
+  }
+
+  // Helper method to add amenities
+  async addAmenities(amenityIds) {
+    return await this.sequelize.models.TransportAmenity.bulkCreate(
+      amenityIds.map((amenityId) => ({
+        transportId: this.id,
+        amenityId,
+        isAvailable: true,
+      }))
+    );
+  }
+
+  // Helper method to update amenities
+  async updateAmenities(amenityUpdates) {
+    const updates = amenityUpdates.map(async (update) => {
+      const [amenity, created] =
+        await this.sequelize.models.TransportAmenity.upsert(
+          {
+            transportId: this.id,
+            amenityId: update.amenityId,
+            isAvailable: update.isAvailable,
+            notes: update.notes,
+          },
+          { returning: true }
+        );
+      return amenity;
+    });
+    return Promise.all(updates);
   }
 }
 

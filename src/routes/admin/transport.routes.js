@@ -4,7 +4,6 @@ const controller = require("../../controllers/admin/transport.controller");
 const validate = require("../../utils/validations/transport.validation");
 const authMiddleware = require("../../middlewares/authMiddleware");
 
-
 router.use(authMiddleware);
 
 router.post("/", validate.create, controller.createTransport);
@@ -26,6 +25,12 @@ router.patch(
 );
 
 /* vista verify */
-router.patch("/:id/verify", validate.getById, controller.verifyTransport);
+router.patch("/:id/verify", validate.verify, controller.verifyTransport);
+
+router.patch(
+  "/:id/amenities",
+  validate.updateAmenities,
+  controller.updateTransportAmenities
+);
 
 module.exports = router;

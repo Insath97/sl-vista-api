@@ -3,7 +3,14 @@ const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class Amenity extends Model {
- 
+  static associate(models) {
+    this.belongsToMany(models.Transport, {
+      through: models.TransportAmenity,
+      foreignKey: "amenityId",
+      otherKey: "transportId",
+      as: "transports",
+    });
+  }
   async toggleVisibility() {
     this.isActive = !this.isActive;
     return await this.save();
@@ -59,7 +66,6 @@ Amenity.init(
     icon: {
       type: DataTypes.STRING(255),
       allowNull: true,
-     
     },
     category: {
       type: DataTypes.STRING(50),
