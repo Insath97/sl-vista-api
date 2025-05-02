@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "aws-sdk": "^2.1692.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.0",
@@ -29,6 +30,7 @@
     "mysql2": "^3.14.0",
     "sequelize": "^6.37.7",
     "slugify": "^1.6.6",
+    "uuid": "^11.1.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {

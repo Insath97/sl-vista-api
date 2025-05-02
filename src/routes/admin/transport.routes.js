@@ -3,11 +3,17 @@ const router = express.Router();
 const controller = require("../../controllers/admin/transport.controller");
 const validate = require("../../utils/validations/transport.validation");
 const authMiddleware = require("../../middlewares/authMiddleware");
+const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 router.use(authMiddleware);
 
 // Create transport
-router.post("/", validate.create, controller.createTransport);
+router.post(
+  "/",
+  uploadMiddleware,
+  validate.create,
+  controller.createTransport
+);
 
 // Get all transports
 router.get("/", validate.list, controller.getAllTransports);
@@ -16,7 +22,12 @@ router.get("/", validate.list, controller.getAllTransports);
 router.get("/:id", validate.getById, controller.getTransportById);
 
 // Update transport
-router.put("/:id", validate.update, controller.updateTransport);
+router.put(
+  "/:id",
+  uploadMiddleware,
+  validate.update,
+  controller.updateTransport
+);
 
 // Delete transport
 router.delete("/:id", validate.delete, controller.deleteTransport);
@@ -26,17 +37,13 @@ router.patch("/restore/:id", validate.restore, controller.restoreTransport);
 
 // Toggle active status
 router.patch(
-  "/status/:id", 
-  validate.toggleStatus, 
+  "/status/:id",
+  validate.toggleStatus,
   controller.toggleActiveStatus
 );
 
 // Verify transport
-router.patch(
-  "/:id/verify", 
-  validate.verify, 
-  controller.verifyTransport
-);
+router.patch("/:id/verify", validate.verify, controller.verifyTransport);
 
 // Update amenities
 router.patch(
@@ -48,6 +55,7 @@ router.patch(
 // Update images
 router.patch(
   "/:id/images",
+  uploadMiddleware,
   validate.updateImages,
   controller.updateTransportImages
 );

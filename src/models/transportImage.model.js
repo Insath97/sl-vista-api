@@ -26,6 +26,22 @@ TransportImage.init(
         notEmpty: true,
       },
     },
+    s3Key: {
+      type: DataTypes.STRING(512),
+      allowNull: true,
+    },
+    fileName: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    size: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mimetype: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     caption: {
       type: DataTypes.STRING(255),
       allowNull: true,

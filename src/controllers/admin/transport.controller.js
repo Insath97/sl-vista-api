@@ -1,10 +1,30 @@
 const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
 const slugify = require("slugify");
+const UploadService = require("../../helpers/upload");
 const Transport = require("../../models/transport.model");
 const TransportType = require("../../models/transportType.model");
 const Amenity = require("../../models/amenity.model");
 const TransportImage = require("../../models/transportImage.model");
+
+// Helper function to handle image uploads
+const handleImageUploads = async (files, transportId) => {
+  if (!files || !files.images || files.images.length === 0) return [];
+
+  const uploadPromises = files.images.map((file) =>
+    UploadService.uploadFile(file, "transport", transportId)
+  );
+
+  const uploadedFiles = await Promise.all(uploadPromises);
+  return uploadedFiles.map((file) => ({
+    transportId,
+    imageUrl: file.url,
+    s3Key: file.key,
+    fileName: file.fileName,
+    size: file.size,
+    mimetype: file.mimetype,
+  }));
+};
 
 /* Create transport with images and amenities */
 exports.createTransport = async (req, res) => {
@@ -14,7 +34,7 @@ exports.createTransport = async (req, res) => {
   }
 
   try {
-    const { images, amenities, ...transportData } = req.body;
+    const { amenities, ...transportData } = req.body;
 
     // Generate slug if not provided
     if (!transportData.slug && transportData.title) {
@@ -27,17 +47,18 @@ exports.createTransport = async (req, res) => {
 
     const transport = await Transport.create(transportData);
 
-    // Add images if provided
-    if (images && images.length) {
-      await transport.addImages(images);
+    // Handle image uploads
+    const images = await handleImageUploads(req.files, transport.id);
+    if (images.length > 0) {
+      await TransportImage.bulkCreate(images);
     }
 
     // Add amenities if provided
-    if (amenities && amenities.length) {
+    if (amenities?.length) {
       await transport.addAmenities(amenities);
     }
 
-    // Fetch the transport with all associations
+    // Fetch with associations
     const transportWithAssociations = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
@@ -99,21 +120,23 @@ exports.getAllTransports = async (req, res) => {
 
     // Conditionally include images
     if (includeImages === "true") {
-      include.push({ 
-        model: TransportImage, 
+      include.push({
+        model: TransportImage,
         as: "images",
-        order: [["sortOrder", "ASC"]]
+        order: [["sortOrder", "ASC"]],
       });
     }
 
     // Filter conditions
     if (transportTypeId) where.transportTypeId = transportTypeId;
-    if (departureCity) where.departureCity = { [Op.iLike]: `%${departureCity}%` };
+    if (departureCity)
+      where.departureCity = { [Op.iLike]: `%${departureCity}%` };
     if (arrivalCity) where.arrivalCity = { [Op.iLike]: `%${arrivalCity}%` };
     if (minSeats) where.seatCount = { [Op.gte]: minSeats };
     if (maxPrice) where.pricePerKmUSD = { [Op.lte]: maxPrice };
     if (isActive !== undefined) where.isActive = isActive === "true";
-    if (vistaVerified !== undefined) where.vistaVerified = vistaVerified === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
     if (search) {
       where[Op.or] = [
         { title: { [Op.iLike]: `%${search}%` } },
@@ -132,7 +155,9 @@ exports.getAllTransports = async (req, res) => {
       paranoid: includeDeleted !== "true",
     };
 
-    const { count, rows: transports } = await Transport.findAndCountAll(options);
+    const { count, rows: transports } = await Transport.findAndCountAll(
+      options
+    );
 
     return res.status(200).json({
       success: true,
@@ -167,11 +192,11 @@ exports.getTransportById = async (req, res) => {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
-        { 
-          model: TransportImage, 
+        {
+          model: TransportImage,
           as: "images",
-          order: [["sortOrder", "ASC"]]
-        }
+          order: [["sortOrder", "ASC"]],
+        },
       ],
       paranoid: includeDeleted !== "true",
     };
@@ -214,10 +239,30 @@ exports.updateTransport = async (req, res) => {
       });
     }
 
-    const { amenities, images, ...updateData } = req.body;
+    const { amenities, images: bodyImages, ...updateData } = req.body;
+    let newImages = [];
 
-    // Generate new slug if title is being updated and slug isn't provided
-    if (updateData.title && !updateData.slug && updateData.title !== transport.title) {
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, transport.id);
+    newImages = [...uploadedImages];
+
+    // Handle body images
+    if (bodyImages?.length) {
+      newImages = [
+        ...newImages,
+        ...bodyImages.map((img) => ({
+          ...img,
+          s3Key: img.s3Key || null,
+        })),
+      ];
+    }
+
+    // Update slug if title changed
+    if (
+      updateData.title &&
+      !updateData.slug &&
+      updateData.title !== transport.title
+    ) {
       updateData.slug = slugify(updateData.title, {
         lower: true,
         strict: true,
@@ -225,41 +270,21 @@ exports.updateTransport = async (req, res) => {
       });
     }
 
-    // Validate the slug won't conflict with others
-    if (updateData.slug) {
-      const existing = await Transport.findOne({
-        where: {
-          slug: updateData.slug,
-          id: { [Op.ne]: req.params.id },
-        },
-      });
-      if (existing) {
-        return res.status(400).json({
-          success: false,
-          message: "Slug is already in use by another transport",
-        });
-      }
-    }
-
-    // Prevent direct modification of vistaVerified unless through verify endpoint
-    if ("vistaVerified" in updateData) {
-      delete updateData.vistaVerified;
-    }
-
-    // Handle amenities if provided
+    // Update amenities
     if (amenities) {
       await transport.setAmenities(amenities);
     }
 
-    // Handle images if provided
-    if (images) {
-      await transport.updateImages(images);
+    // Update images
+    if (newImages.length > 0) {
+      await TransportImage.destroy({ where: { transportId: transport.id } });
+      await TransportImage.bulkCreate(newImages);
     }
 
     await transport.update(updateData);
 
-    // Fetch the updated record with associations
-    const updatedTransport = await Transport.findByPk(req.params.id, {
+    // Fetch updated transport
+    const updatedTransport = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
@@ -290,7 +315,10 @@ exports.deleteTransport = async (req, res) => {
   }
 
   try {
-    const transport = await Transport.findByPk(req.params.id);
+    const transport = await Transport.findByPk(req.params.id, {
+      include: [{ model: TransportImage, as: "images" }],
+    });
+
     if (!transport) {
       return res.status(404).json({
         success: false,
@@ -298,7 +326,15 @@ exports.deleteTransport = async (req, res) => {
       });
     }
 
+    // Delete all associated images from S3
+    const s3Images = transport.images.filter((img) => img.s3Key);
+    const deletePromises = s3Images.map((img) =>
+      uploadService.deleteFile(img.s3Key)
+    );
+
+    await Promise.all(deletePromises);
     await transport.destroy();
+
     return res.status(200).json({
       success: true,
       message: "Transport deleted successfully",
@@ -311,7 +347,6 @@ exports.deleteTransport = async (req, res) => {
     });
   }
 };
-
 /* Restore soft-deleted transport with images */
 exports.restoreTransport = async (req, res) => {
   const errors = validationResult(req);
@@ -416,9 +451,10 @@ exports.verifyTransport = async (req, res) => {
     }
 
     // Toggle verification status or set based on request body
-    const newVerifiedStatus = req.body.verified !== undefined 
-      ? req.body.verified 
-      : !transport.vistaVerified;
+    const newVerifiedStatus =
+      req.body.verified !== undefined
+        ? req.body.verified
+        : !transport.vistaVerified;
 
     await transport.update({ vistaVerified: newVerifiedStatus });
 
@@ -469,7 +505,8 @@ exports.updateTransportAmenities = async (req, res) => {
             await transport.sequelize.models.TransportAmenity.upsert({
               transportId: transport.id,
               amenityId: amenity.amenityId,
-              isAvailable: amenity.isAvailable !== undefined ? amenity.isAvailable : true,
+              isAvailable:
+                amenity.isAvailable !== undefined ? amenity.isAvailable : true,
               notes: amenity.notes || null,
             });
           })
@@ -481,12 +518,12 @@ exports.updateTransportAmenities = async (req, res) => {
     const updatedTransport = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
-        { 
-          model: Amenity, 
+        {
+          model: Amenity,
           as: "amenities",
-          through: { attributes: ["isAvailable", "notes"] }
+          through: { attributes: ["isAvailable", "notes"] },
         },
-        { model: TransportImage, as: "images" }
+        { model: TransportImage, as: "images" },
       ],
     });
 
@@ -505,7 +542,7 @@ exports.updateTransportAmenities = async (req, res) => {
   }
 };
 
-/* Update transport images */
+/* Update transport images only */
 exports.updateTransportImages = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -521,18 +558,19 @@ exports.updateTransportImages = async (req, res) => {
       });
     }
 
-    const { images } = req.body;
-    
-    if (images) {
-      await transport.updateImages(images);
+    // Handle file uploads
+    const images = await handleImageUploads(req.files, transport.id);
+
+    if (images.length > 0) {
+      await TransportImage.destroy({ where: { transportId: transport.id } });
+      await TransportImage.bulkCreate(images);
     }
 
-    // Fetch the updated transport with all associations
     const updatedTransport = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
         { model: Amenity, as: "amenities" },
-        { model: TransportImage, as: "images" }
+        { model: TransportImage, as: "images" },
       ],
     });
 
@@ -560,10 +598,10 @@ exports.deleteTransportImage = async (req, res) => {
 
   try {
     const image = await TransportImage.findOne({
-      where: { 
+      where: {
         id: req.params.imageId,
-        transportId: req.params.id
-      }
+        transportId: req.params.id,
+      },
     });
 
     if (!image) {
@@ -571,6 +609,11 @@ exports.deleteTransportImage = async (req, res) => {
         success: false,
         message: "Image not found for this transport",
       });
+    }
+
+    // Delete from S3 if it's an S3-stored image
+    if (image.s3Key) {
+      await uploadService.deleteFile(image.s3Key);
     }
 
     await image.destroy();
@@ -600,22 +643,22 @@ exports.setFeaturedImage = async (req, res) => {
     // First unset any currently featured image
     await TransportImage.update(
       { isFeatured: false },
-      { 
-        where: { 
+      {
+        where: {
           transportId: req.params.id,
-          isFeatured: true
-        } 
+          isFeatured: true,
+        },
       }
     );
 
     // Set the new featured image
     const [affectedCount] = await TransportImage.update(
       { isFeatured: true },
-      { 
-        where: { 
+      {
+        where: {
           id: req.params.imageId,
-          transportId: req.params.id
-        } 
+          transportId: req.params.id,
+        },
       }
     );
 
