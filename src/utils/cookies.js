@@ -1,46 +1,47 @@
 const setAuthCookies = (res, accessToken, refreshToken) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  const isLocalhost = process.env.NODE_ENV === "development";
+  
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Secure in production
-    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-    domain:  "https://slvista-admin.vercel.app"  // Set domain in production
+    secure: isProduction, // true in production, false in development
+    sameSite: isLocalhost ? "Lax" : "None", // Lax for localhost, None for production
+    domain: isLocalhost ? undefined : ".yourdomain.com", // Set domain in production
+    path: "/" // Set root path for accessToken
   };
 
-  // Access token cookie (short-lived)
+  // Access token cookie
   res.cookie("accessToken", accessToken, {
     ...cookieOptions,
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
-  // Refresh token cookie (long-lived)
+  // Refresh token cookie
   res.cookie("refreshToken", refreshToken, {
     ...cookieOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: "/api/v1/auth/refresh", // Only sent to refresh endpoint
+    path: "/api/v1/refresh", // Specific path for refresh
   });
 
-  // Also return the tokens in the response for clients that need them
-  return {
-    accessToken,
-    refreshToken
-  };
+  return { accessToken, refreshToken };
 };
 
 const clearAuthCookies = (res) => {
-  const cookieOptions = {
+  const isProduction = process.env.NODE_ENV === "production";
+  
+  const baseOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+    secure: isProduction,
+    sameSite: isProduction ? "None" : "Lax"
   };
 
-  res.clearCookie("accessToken", cookieOptions);
-  res.clearCookie("refreshToken", {
-    ...cookieOptions,
-    path: "/api/v1/auth/refresh",
+  res.clearCookie("accessToken", {
+    ...baseOptions,
+    path: "/"
   });
-};
-
-module.exports = {
-  setAuthCookies,
-  clearAuthCookies,
+  
+  res.clearCookie("refreshToken", {
+    ...baseOptions,
+    path: "/api/v1/refresh"
+  });
 };
