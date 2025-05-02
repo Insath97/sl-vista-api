@@ -3,6 +3,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production", // Secure in production
     sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+    domain:  "https://slvista-admin.vercel.app"  // Set domain in production
   };
 
   // Access token cookie (short-lived)
