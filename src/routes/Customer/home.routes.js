@@ -9,6 +9,8 @@ const transportTypeController = require("../../controllers/admin/transporttype.c
 const validateTransport = require("../../utils/validations/transport.validation");
 const transportController = require("../../controllers/admin/transport.controller");
 
+/* activity */
+
 /* get all transport types */
 router.get(
   "/transport-types",
