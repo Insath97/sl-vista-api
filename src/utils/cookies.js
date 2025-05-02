@@ -6,7 +6,6 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     httpOnly: true,
     secure: isProduction, // true in production, false in development
     sameSite: isLocalhost ? "Lax" : "None", // Lax for localhost, None for production
-    domain: isLocalhost ? undefined : ".yourdomain.com", // Set domain in production
     path: "/" // Set root path for accessToken
   };
 
