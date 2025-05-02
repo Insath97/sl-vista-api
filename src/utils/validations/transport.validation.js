@@ -136,6 +136,28 @@ const transportValidations = [
     .optional()
     .isBoolean()
     .withMessage("vistaVerified must be a boolean value"),
+
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be less than 100 characters"),
+
+  body("website")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid website URL")
+    .isLength({ max: 255 })
+    .withMessage("Website URL must be less than 255 characters"),
+
+  body("description")
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage("Description must be less than 2000 characters"),
 ];
 
 // Query validations
@@ -201,10 +223,21 @@ const queryValidations = [
 const amenityValidations = [
   body("amenities")
     .optional()
-    .isArray()
-    .withMessage("Amenities must be an array"),
+    .customSanitizer((value) => {
+      if (typeof value === "string") {
+        return value.split(",").map((id) => parseInt(id.trim()));
+      }
+      return value;
+    })
+    .custom((value) => {
+      if (value && !Array.isArray(value)) {
+        throw new Error("Amenities must be an array or comma-separated string");
+      }
+      return true;
+    }),
 
-  body("amenities.*.amenityId")
+  body("amenities.*")
+    .optional()
     .isInt()
     .withMessage("Amenity ID must be an integer")
     .custom(async (value) => {
@@ -212,45 +245,30 @@ const amenityValidations = [
       if (!amenity) throw new Error(`Amenity with ID ${value} not found`);
       return true;
     }),
-
-  body("amenities.*.isAvailable")
-    .optional()
-    .isBoolean()
-    .withMessage("isAvailable must be a boolean"),
-
-  body("amenities.*.notes")
-    .optional()
-    .isString()
-    .withMessage("Notes must be a string")
-    .isLength({ max: 500 })
-    .withMessage("Notes must be less than 500 characters"),
 ];
 
 // Image validations
 const imageValidations = [
-  body("images")
-    .optional()
-    .isArray()
-    .withMessage("Images must be an array"),
-  
+  body("images").optional().isArray().withMessage("Images must be an array"),
+
   body("images.*.imageUrl")
     .isURL()
     .withMessage("Image URL must be a valid URL")
     .isLength({ max: 512 })
     .withMessage("Image URL must be less than 512 characters"),
-  
+
   body("images.*.caption")
     .optional()
     .isString()
     .withMessage("Caption must be a string")
     .isLength({ max: 255 })
     .withMessage("Caption must be less than 255 characters"),
-  
+
   body("images.*.isFeatured")
     .optional()
     .isBoolean()
     .withMessage("isFeatured must be a boolean"),
-  
+
   body("images.*.sortOrder")
     .optional()
     .isInt()
@@ -296,7 +314,7 @@ module.exports = {
     ...validateCoordinates,
     ...transportValidations,
     ...amenityValidations,
-    ...imageValidations
+    ...imageValidations,
   ],
 
   // Update Transport

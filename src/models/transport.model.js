@@ -155,6 +155,24 @@ Transport.init(
         notEmpty: { msg: "Phone number is required" },
       },
     },
+    email: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      validate: {
+        isEmail: { msg: "Invalid email format" },
+      },
+    },
+    website: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: { msg: "Invalid website URL" },
+      },
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     departureCity: {
       type: DataTypes.STRING(100),
       allowNull: false,
