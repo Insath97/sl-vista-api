@@ -8,7 +8,7 @@ const authMiddleware = async (req, res, next) => {
   try {
     // Get token from cookies or Authorization header
     let token = req.cookies.accessToken;
-
+    
     // If no cookie token, check Authorization header
     if (!token && req.headers.authorization) {
       const authHeader = req.headers.authorization;
@@ -27,7 +27,7 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     try {
       const decoded = verifyToken(token);
-
+      
       // Check if user still exists
       const currentUser = await User.findByPk(decoded.id);
       if (!currentUser) {
@@ -41,21 +41,18 @@ const authMiddleware = async (req, res, next) => {
       req.user = currentUser;
       next();
     } catch (verifyError) {
-      console.error("Token verification error:", verifyError);
+      console.error('Token verification error:', verifyError);
       return res.status(401).json({
         success: false,
         message: "Invalid or expired token",
-        error:
-          process.env.NODE_ENV === "development"
-            ? verifyError.message
-            : undefined,
+        error: process.env.NODE_ENV === 'development' ? verifyError.message : undefined
       });
     }
   } catch (err) {
     return res.status(500).json({
       success: false,
       message: "Authentication error",
-      error: process.env.NODE_ENV === "development" ? err.message : undefined,
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };

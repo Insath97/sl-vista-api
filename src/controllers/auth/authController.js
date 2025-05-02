@@ -10,7 +10,6 @@ const {
 } = require("../../utils/auth");
 
 // Common login function
-// Common login function
 const loginUser = async (req, res, accountType) => {
   try {
     const errors = validationResult(req);
