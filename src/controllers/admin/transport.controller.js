@@ -28,37 +28,88 @@ const handleImageUploads = async (files, transportId) => {
 
 /* Create transport with images and amenities */
 exports.createTransport = async (req, res) => {
+  console.log('[DEBUG] Starting createTransport');
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.log('[DEBUG] Validation errors:', errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
+    console.log('[DEBUG] Request body:', JSON.stringify(req.body, null, 2));
+    console.log('[DEBUG] Files received:', req.files ? Object.keys(req.files) : 'No files');
+
     const { amenities, ...transportData } = req.body;
+    console.log('[DEBUG] Extracted transportData:', transportData);
+    console.log('[DEBUG] Extracted amenities:', amenities);
 
     // Generate slug if not provided
     if (!transportData.slug && transportData.title) {
+      console.log('[DEBUG] Generating slug for title:', transportData.title);
       transportData.slug = slugify(transportData.title, {
         lower: true,
         strict: true,
         remove: /[*+~.()'"!:@]/g,
       });
+      console.log('[DEBUG] Generated slug:', transportData.slug);
     }
 
+    console.log('[DEBUG] Creating transport in database...');
     const transport = await Transport.create(transportData);
+    console.log('[DEBUG] Transport created with ID:', transport.id);
 
     // Handle image uploads
-    const images = await handleImageUploads(req.files, transport.id);
-    if (images.length > 0) {
-      await TransportImage.bulkCreate(images);
+    let images = [];
+    if (req.files && req.files.images && req.files.images.length > 0) {
+      console.log('[DEBUG] Processing', req.files.images.length, 'image uploads');
+      
+      try {
+        const uploadPromises = req.files.images.map((file, index) => {
+          console.log(`[DEBUG] Uploading file ${index + 1}:`, {
+            originalname: file.originalname,
+            size: file.size,
+            mimetype: file.mimetype
+          });
+          return UploadService.uploadFile(file, "transport", transport.id);
+        });
+
+        const uploadedFiles = await Promise.all(uploadPromises);
+        console.log('[DEBUG] Uploaded files details:', uploadedFiles);
+
+        images = uploadedFiles.map((file) => ({
+          transportId: transport.id,
+          imageUrl: file.url,
+          s3Key: file.key,
+          fileName: file.fileName,
+          size: file.size,
+          mimetype: file.mimetype,
+        }));
+
+        console.log('[DEBUG] Saving images to database...');
+        await TransportImage.bulkCreate(images);
+        console.log('[DEBUG] Images saved successfully');
+      } catch (uploadError) {
+        console.error('[DEBUG] Image upload failed:', uploadError);
+        throw new Error(`Image upload failed: ${uploadError.message}`);
+      }
+    } else {
+      console.log('[DEBUG] No images to upload');
     }
 
     // Add amenities if provided
     if (amenities?.length) {
-      await transport.addAmenities(amenities);
+      console.log('[DEBUG] Adding amenities:', amenities);
+      try {
+        await transport.addAmenities(amenities);
+        console.log('[DEBUG] Amenities added successfully');
+      } catch (amenityError) {
+        console.error('[DEBUG] Amenity addition failed:', amenityError);
+        throw new Error(`Amenity addition failed: ${amenityError.message}`);
+      }
     }
 
     // Fetch with associations
+    console.log('[DEBUG] Fetching transport with associations...');
     const transportWithAssociations = await Transport.findByPk(transport.id, {
       include: [
         { model: TransportType, as: "transportType" },
@@ -67,17 +118,34 @@ exports.createTransport = async (req, res) => {
       ],
     });
 
+    console.log('[DEBUG] Final transport data:', JSON.stringify(transportWithAssociations, null, 2));
+    
     return res.status(201).json({
       success: true,
       message: "Transport created successfully",
       data: transportWithAssociations,
     });
   } catch (error) {
-    console.error("Error creating transport:", error);
+    console.error("[DEBUG] Full error stack:", error.stack);
+    console.error("[DEBUG] Error details:", {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      status: error.status,
+    });
+
     return res.status(500).json({
       success: false,
       message: "Failed to create transport",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      error: process.env.NODE_ENV === "development" ? {
+        message: error.message,
+        stack: error.stack,
+        details: {
+          name: error.name,
+          code: error.code,
+          status: error.status,
+        }
+      } : undefined,
     });
   }
 };
@@ -116,16 +184,13 @@ exports.getAllTransports = async (req, res) => {
         required: !!amenities,
         through: { attributes: ["isAvailable", "notes"] },
       },
-    ];
-
-    // Conditionally include images
-    if (includeImages === "true") {
-      include.push({
+      {
         model: TransportImage,
         as: "images",
         order: [["sortOrder", "ASC"]],
-      });
-    }
+      },
+    ];
+
 
     // Filter conditions
     if (transportTypeId) where.transportTypeId = transportTypeId;
