@@ -87,6 +87,7 @@ exports.createTransport = async (req, res) => {
     });
   }
 };
+
 /* Get all transports with optional images */
 exports.getAllTransports = async (req, res) => {
   const errors = validationResult(req);

@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { verifyToken } = require("../utils/auth");
 const User = require("../models/user.model");
-
+const  cookies = require("../utils/cookies");
 require("dotenv").config();
 
 // Middleware to protect routes

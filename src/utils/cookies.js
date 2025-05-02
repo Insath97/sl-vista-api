@@ -1,7 +1,7 @@
 const setAuthCookies = (res, accessToken, refreshToken) => {
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // HTTPS only in production
+   /*  secure: process.env.NODE_ENV === "production", */ 
     sameSite: "None", // Prevent CSRF
     secure: true, // Secure cookie
   };
