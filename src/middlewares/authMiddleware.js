@@ -1,16 +1,21 @@
 const jwt = require("jsonwebtoken");
 const { verifyToken } = require("../utils/auth");
 const User = require("../models/user.model");
-const  cookies = require("../utils/cookies");
+const cookies = require("../utils/cookies");
 require("dotenv").config();
 
-// Middleware to protect routes
 const authMiddleware = async (req, res, next) => {
   try {
     // Get token from cookies or Authorization header
-    let token = req.cookies.accessToken || req.headers.authorization?.split(" ")[1];
+    let token = req.cookies.accessToken;
 
-    console.log('Token received:', token); // Debug log
+    // If no cookie token, check Authorization header
+    if (!token && req.headers.authorization) {
+      const authHeader = req.headers.authorization;
+      if (authHeader.startsWith("Bearer ")) {
+        token = authHeader.split(" ")[1];
+      }
+    }
 
     if (!token) {
       return res.status(401).json({
@@ -22,7 +27,6 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     try {
       const decoded = verifyToken(token);
-      console.log('Decoded token:', decoded); // Debug log
 
       // Check if user still exists
       const currentUser = await User.findByPk(decoded.id);
@@ -37,14 +41,21 @@ const authMiddleware = async (req, res, next) => {
       req.user = currentUser;
       next();
     } catch (verifyError) {
-      console.error('Token verification error:', verifyError); // Debug log
-      throw verifyError;
+      console.error("Token verification error:", verifyError);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+        error:
+          process.env.NODE_ENV === "development"
+            ? verifyError.message
+            : undefined,
+      });
     }
   } catch (err) {
-    return res.status(401).json({
+    return res.status(500).json({
       success: false,
-      message: "Invalid or expired token",
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      message: "Authentication error",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };

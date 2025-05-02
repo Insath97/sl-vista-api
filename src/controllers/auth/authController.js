@@ -10,6 +10,7 @@ const {
 } = require("../../utils/auth");
 
 // Common login function
+// Common login function
 const loginUser = async (req, res, accountType) => {
   try {
     const errors = validationResult(req);
@@ -33,7 +34,7 @@ const loginUser = async (req, res, accountType) => {
     const includeOptions =
       accountType === "admin"
         ? [{ model: AdminProfile, as: "adminProfile" }]
-        : [{ model: MerchantProfile, as: "merchantProfile" }]; 
+        : [{ model: MerchantProfile, as: "merchantProfile" }];
 
     const foundUser = await User.scope("withPassword").findOne({
       where: { email },
@@ -57,7 +58,8 @@ const loginUser = async (req, res, accountType) => {
     const accessToken = generateToken(foundUser);
     const refreshToken = generateRefreshToken(foundUser);
 
-    setAuthCookies(res, accessToken, refreshToken);
+    // Set cookies and get tokens
+    const tokens = setAuthCookies(res, accessToken, refreshToken);
 
     const userData = foundUser.toJSON();
     delete userData.password;
@@ -76,10 +78,11 @@ const loginUser = async (req, res, accountType) => {
           createdAt: userData.createdAt,
           lastPasswordChange: userData.lastPasswordChange,
           ...(userData.adminProfile && { adminProfile: userData.adminProfile }),
-          // Add merchant profile here when ready
-          ...(userData.merchantProfile && {merchantProfile: userData.merchantProfile}),
+          ...(userData.merchantProfile && {
+            merchantProfile: userData.merchantProfile,
+          }),
         },
-        accessToken, // Include in response for clients that need it
+        tokens, // Include tokens in response for clients that need them
       },
     };
 
@@ -107,7 +110,7 @@ exports.merchantLogin = async (req, res) => {
 // Refresh token
 exports.refreshToken = async (req, res) => {
   try {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
     if (!refreshToken) {
       return res.status(401).json({
@@ -127,7 +130,11 @@ exports.refreshToken = async (req, res) => {
     }
 
     const newAccessToken = generateToken(user);
-    setAuthCookies(res, newAccessToken, refreshToken);
+
+    // Set new cookies if using cookie-based auth
+    if (req.cookies.refreshToken) {
+      setAuthCookies(res, newAccessToken, refreshToken);
+    }
 
     res.status(200).json({
       success: true,
@@ -138,6 +145,7 @@ exports.refreshToken = async (req, res) => {
     res.status(401).json({
       success: false,
       message: "Invalid refresh token",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
