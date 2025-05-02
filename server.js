@@ -20,6 +20,8 @@ const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportRoutes = require("./src/routes/admin/transport.routes");
 
+const customerHomeroutes = require("./src/routes/Customer/home.routes");
+
 const app = express();
 
 // Middleware
@@ -50,6 +52,9 @@ app.use("/api/v1/admin/transports", transportRoutes);
 
 // merchnat routes
 app.use("/api/v1/merchants", merchantRoutes);
+
+// customer routes
+app.use("/api/v1/customer/list", customerHomeroutes);
 
 // 1st api
 app.get("/", (req, res) => {
