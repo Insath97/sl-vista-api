@@ -22,16 +22,14 @@ router.put("/:id", validate.update, controller.updateLocalArtistType);
 router.delete("/:id", validate.delete, controller.deleteLocalArtistType);
 
 // Restore
-router.post(
+router.patch(
   "/:id/restore",
-  validate.restore,
   controller.restoreLocalArtistType
 );
 
 // Toggle status
 router.patch(
   "/:id/status",
-  validate.toggleStatus,
   controller.toggleActiveStatus
 );
 

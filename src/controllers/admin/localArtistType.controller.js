@@ -166,6 +166,7 @@ exports.restoreLocalArtistType = async (req, res) => {
     await localArtistType.restore();
     return res.status(200).json({
       success: true,
+      message: "Local artist type restored successfully",
       data: localArtistType,
     });
   } catch (error) {
