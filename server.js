@@ -20,6 +20,7 @@ const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportRoutes = require("./src/routes/admin/transport.routes");
 const localArtistTypeRoutes = require("./src/routes/admin/localArtistType.routes");
+const localArtistRoutes = require("./src/routes/admin/localArtist.routes");
 
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 
@@ -55,6 +56,7 @@ app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
 app.use("/api/v1/admin/transports", transportRoutes);
 app.use("/api/v1/admin/local-artist-types", localArtistTypeRoutes);
+app.use("/api/v1/admin/local-artists", localArtistRoutes);
 
 // merchnat routes
 app.use("/api/v1/merchants", merchantRoutes);

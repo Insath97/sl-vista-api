@@ -2,7 +2,15 @@ const { DataTypes, Model } = require("sequelize");
 const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
-class LocalArtistType extends Model {}
+class LocalArtistType extends Model {
+  static associate(models) {
+    this.hasMany(models.LocalArtist, {
+      foreignKey: "artistTypeId",
+      as: "artists",
+      onDelete: "CASCADE",
+    });
+  }
+}
 
 LocalArtistType.init(
   {
