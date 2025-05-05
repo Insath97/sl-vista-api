@@ -16,12 +16,11 @@ const categoryRoutes = require("./src/routes/admin/category.routes");
 const subCategoryRoutes = require("./src/routes/admin/subCategory.routes");
 const merchantRoutes = require("./src/routes/Merchant/merchantAuthRoutes");
 const adminMerchantRoutes = require("./src/routes/admin/merchant.routes");
-const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
-const transportRoutes = require("./src/routes/admin/transport.routes");
+const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
+const transportAgencyRoutes = require("./src/routes/admin/transportAgency.routes");
 const localArtistTypeRoutes = require("./src/routes/admin/localArtistType.routes");
 const localArtistRoutes = require("./src/routes/admin/localArtist.routes");
-const activityTypeRoutes = require("./src/routes/admin/activityType.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 
 const app = express();
@@ -54,10 +53,9 @@ app.use("/api/v1/admin/subcategories", subCategoryRoutes);
 app.use("/api/v1/admin", adminMerchantRoutes);
 app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
-app.use("/api/v1/admin/transports", transportRoutes);
+app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
 app.use("/api/v1/admin/local-artist-types", localArtistTypeRoutes);
 app.use("/api/v1/admin/local-artists", localArtistRoutes);
-app.use("/api/v1/admin/activity-types", activityTypeRoutes);
 
 // merchnat routes
 app.use("/api/v1/merchants", merchantRoutes);

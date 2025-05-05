@@ -6,8 +6,8 @@ const validateTransportType = require("../../utils/validations/transportType.val
 const transportTypeController = require("../../controllers/admin/transporttype.controller");
 
 /* transport */
-const validateTransport = require("../../utils/validations/transport.validation");
-const transportController = require("../../controllers/admin/transport.controller");
+const validateTransportAgency = require("../../utils/validations/transportAgency.validation");
+const transportAgencyController = require("../../controllers/admin/transportAgency.controller");
 
 /* activity */
 
@@ -20,9 +20,9 @@ router.get(
 
 /* get all transport with images & amenties */
 router.get(
-  "/transports",
-  validateTransport.list,
-  transportController.getAllTransports
+  "/transport-agencies",
+  validateTransportAgency.list,
+  transportAgencyController.getAllTransportAgencies
 );
 
 module.exports = router;

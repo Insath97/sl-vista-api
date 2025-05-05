@@ -3,12 +3,11 @@ const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class TransportType extends Model {
-  
   static associate(models) {
-    this.hasMany(models.Transport, {
+    this.belongsToMany(models.TransportAgency, {
+      through: models.TransportAgencyType,
       foreignKey: "transportTypeId",
-      as: "transports",
-      onDelete: "CASCADE",
+      as: "transportAgencies",
     });
   }
 
