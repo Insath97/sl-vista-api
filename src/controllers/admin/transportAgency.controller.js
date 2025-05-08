@@ -111,7 +111,18 @@ exports.getAllTransportAgencies = async (req, res) => {
     } = req.query;
 
     const where = {};
-    const include = [];
+    const include = [
+      {
+        model: TransportType,
+        as: "transportTypes",
+        through: { attributes: [] },
+      },
+      {
+        model: TransportAgencyImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      },
+    ];
 
     if (includeTypes === "true") {
       include.push({
