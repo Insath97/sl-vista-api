@@ -26,7 +26,7 @@ exports.registerMerchant = async (req, res, next) => {
       passportNumber,
       address,
       city,
-      country = "Sri Lanka",
+      country,
       phoneNumber,
     } = req.body;
 
