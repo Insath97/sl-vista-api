@@ -1,0 +1,19 @@
+const express = require("express");
+const router = express.Router();
+const controller = require("../../controllers/Merchant/property.controller");
+const validate = require("../../utils/validations/property.validation");
+const authMiddleware = require("../../middlewares/authMiddleware");
+
+router.use(authMiddleware);
+
+/* Get all merchant properties */
+router.get("/", validate.list, controller.getAllMerchantProperties);
+
+/* Update property approval status */
+router.patch(
+  "/:id/approval-status",
+  validate.updateApprovalStatus,
+  controller.updatePropertyApprovalStatus
+);
+
+module.exports = router;

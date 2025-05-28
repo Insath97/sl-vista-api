@@ -1,0 +1,915 @@
+const { Op } = require("sequelize");
+const { validationResult } = require("express-validator");
+const slugify = require("slugify");
+const UploadService = require("../../helpers/upload");
+const Property = require("../../models/property.model");
+const PropertyImage = require("../../models/propertyImage.model");
+const Amenity = require("../../models/amenity.model");
+const PropertyAmenity = require("../../models/propertyAmenity.model");
+const User = require("../../models/user.model");
+const MerchantProfile = require("../../models/merchantProfile.model");
+
+// Helper function to handle image uploads
+const handleImageUploads = async (files, propertyId) => {
+  if (!files || !files.images || files.images.length === 0) return [];
+
+  const uploadPromises = files.images.map((file) =>
+    UploadService.uploadFile(file, "property", propertyId)
+  );
+
+  const uploadedFiles = await Promise.all(uploadPromises);
+  return uploadedFiles.map((file) => ({
+    propertyId,
+    imageUrl: file.url,
+    s3Key: file.key,
+    fileName: file.fileName,
+    size: file.size,
+    mimetype: file.mimetype,
+  }));
+};
+
+/* Create property with images and amenities */
+exports.createProperty = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    // First get the full user with merchant profile
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        {
+          model: MerchantProfile,
+          as: "merchantProfile",
+        },
+      ],
+    });
+
+    if (!user || !user.merchantProfile) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Merchant profile not found. Please complete your merchant registration first.",
+      });
+    }
+
+    const merchant = user.merchantProfile;
+
+    // Check property limit
+    const propertyCount = await Property.count({
+      where: { merchantId: merchant.id },
+    });
+
+    if (propertyCount >= merchant.maxPropertiesAllowed) {
+      return res.status(403).json({
+        success: false,
+        message: `You have reached your property limit (${merchant.maxPropertiesAllowed})`,
+      });
+    }
+
+    const { amenities, ...propertyData } = req.body;
+
+    // Generate slug if not provided
+    if (!propertyData.slug && propertyData.title) {
+      propertyData.slug = slugify(propertyData.title, {
+        lower: true,
+        strict: true,
+        remove: /[*+~.()'"!:@]/g,
+      });
+    }
+
+    // Set merchant ID
+    propertyData.merchantId = merchant.id;
+
+    const property = await Property.create(propertyData);
+
+    // Handle image uploads
+    const images = await handleImageUploads(req.files, property.id);
+    if (images.length > 0) {
+      await PropertyImage.bulkCreate(images);
+    }
+
+    // Add amenities if provided
+    if (amenities?.length) {
+      await property.addAmenities(amenities);
+    }
+
+    // Fetch with associations
+    const propertyWithAssociations = await Property.findByPk(property.id, {
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+      ],
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Property created successfully",
+      data: propertyWithAssociations,
+    });
+  } catch (error) {
+    console.error("Error creating property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create property",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Get all properties (for merchant) */
+exports.getMerchantProperties = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user;
+    if (!merchant.accountType == "merchant") {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can access properties",
+      });
+    }
+
+    const {
+      includeInactive,
+      includeImages,
+      includeAmenities,
+      page = 1,
+      limit = 10,
+      search,
+      propertyType,
+      city,
+      approvalStatus,
+      availabilityStatus,
+    } = req.query;
+
+    const where = { merchantId: merchant.id };
+    /*  console.log("Merchnat Id"+merchant.id); */
+
+    const include = [];
+
+    if (includeAmenities === "true") {
+      include.push({
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: ["isAvailable", "notes"] },
+      });
+    }
+
+    if (includeImages === "true") {
+      include.push({
+        model: PropertyImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      });
+    }
+
+    // Filter conditions
+    if (includeInactive !== "true") where.isActive = true;
+    if (propertyType) where.propertyType = propertyType;
+    if (city) where.city = city;
+    if (approvalStatus) where.approvalStatus = approvalStatus;
+    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
+
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+        { address: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
+      where,
+      include,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+    };
+
+    const { count, rows: properties } = await Property.findAndCountAll(options);
+
+    return res.status(200).json({
+      success: true,
+      data: properties,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching properties:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch properties",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Get property by ID (merchant-specific) */
+exports.getPropertyById = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can access properties",
+      });
+    }
+
+    const options = {
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+      ],
+    };
+
+    const property = await Property.findOne(options);
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: property,
+    });
+  } catch (error) {
+    console.error("Error fetching property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch property",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update property */
+exports.updateProperty = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    const property = await Property.findOne({
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    const { amenities, images: bodyImages, ...updateData } = req.body;
+    let newImages = [];
+
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, property.id);
+    newImages = [...uploadedImages];
+
+    // Handle body images
+    if (bodyImages?.length) {
+      newImages = [
+        ...newImages,
+        ...bodyImages.map((img) => ({
+          ...img,
+          s3Key: img.s3Key || null,
+        })),
+      ];
+    }
+
+    // Update slug if title changed
+    if (
+      updateData.title &&
+      !updateData.slug &&
+      updateData.title !== property.title
+    ) {
+      updateData.slug = slugify(updateData.title, {
+        lower: true,
+        strict: true,
+        remove: /[*+~.()'"!:@]/g,
+      });
+    }
+
+    // Update amenities if provided
+    if (amenities) {
+      await property.updateAmenities(amenities);
+    }
+
+    // Update images
+    if (newImages.length > 0) {
+      await PropertyImage.destroy({
+        where: { propertyId: property.id },
+      });
+      await PropertyImage.bulkCreate(newImages);
+    }
+
+    await property.update(updateData);
+
+    // Fetch updated property
+    const updatedProperty = await Property.findByPk(property.id, {
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Property updated successfully",
+      data: updatedProperty,
+    });
+  } catch (error) {
+    console.error("Error updating property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update property",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Delete property */
+exports.deleteProperty = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can delete properties",
+      });
+    }
+
+    const property = await Property.findOne({
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+      include: [{ model: PropertyImage, as: "images" }],
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    // Get all S3 keys from images
+    const s3Keys = property.images.map((img) => img.s3Key).filter((key) => key);
+
+    // Delete all associated images from S3
+    if (s3Keys.length > 0) {
+      if (s3Keys.length === 1) {
+        await UploadService.deleteFile(s3Keys[0]);
+      } else {
+        await UploadService.deleteMultipleFiles(s3Keys);
+      }
+    }
+
+    await property.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: "Property deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete property",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Toggle property active status */
+exports.toggleActiveStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    const property = await Property.findOne({
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    await property.update({ isActive: !property.isActive });
+
+    return res.status(200).json({
+      success: true,
+      message: "Property status toggled successfully",
+      data: {
+        id: property.id,
+        isActive: !property.isActive,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling property status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to toggle property status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update property amenities */
+exports.updateAmenities = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    const property = await Property.findOne({
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    const { amenities } = req.body;
+
+    await property.updateAmenities(amenities);
+
+    const updatedProperty = await Property.findByPk(property.id, {
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Property amenities updated successfully",
+      data: updatedProperty,
+    });
+  } catch (error) {
+    console.error("Error updating property amenities:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update property amenities",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update property images */
+exports.updateImages = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    const property = await Property.findOne({
+      where: {
+        id: req.params.id,
+        merchantId: merchant.id,
+      },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or not owned by this merchant",
+      });
+    }
+
+    // Handle file uploads
+    const images = await handleImageUploads(req.files, property.id);
+
+    if (images.length > 0) {
+      await PropertyImage.destroy({
+        where: { propertyId: property.id },
+      });
+      await PropertyImage.bulkCreate(images);
+    }
+
+    const updatedProperty = await Property.findByPk(property.id, {
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Property images updated successfully",
+      data: updatedProperty,
+    });
+  } catch (error) {
+    console.error("Error updating property images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update property images",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Delete property image */
+exports.deleteImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    const image = await PropertyImage.findOne({
+      where: {
+        id: req.params.imageId,
+        propertyId: req.params.id,
+      },
+      include: [
+        {
+          model: Property,
+          as: "property",
+          where: { merchantId: merchant.id },
+        },
+      ],
+    });
+
+    if (!image) {
+      return res.status(404).json({
+        success: false,
+        message: "Image not found for this property",
+      });
+    }
+
+    // Delete from S3 if it's an S3-stored image
+    if (image.s3Key) {
+      await UploadService.deleteFile(image.s3Key);
+    }
+
+    await image.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: "Property image deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting property image:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete property image",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Set featured image */
+exports.setFeaturedImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const merchant = req.user.merchantProfile;
+    if (!merchant) {
+      return res.status(403).json({
+        success: false,
+        message: "Only merchants can update properties",
+      });
+    }
+
+    // First unset any currently featured image
+    await PropertyImage.update(
+      { isFeatured: false },
+      {
+        where: {
+          propertyId: req.params.id,
+          isFeatured: true,
+        },
+      }
+    );
+
+    // Set the new featured image
+    const [affectedCount] = await PropertyImage.update(
+      { isFeatured: true },
+      {
+        where: {
+          id: req.params.imageId,
+          propertyId: req.params.id,
+        },
+      }
+    );
+
+    if (affectedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Image not found for this property",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Featured image set successfully",
+    });
+  } catch (error) {
+    console.error("Error setting featured image:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to set featured image",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Verify property (Admin only) */
+exports.verifyProperty = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    // Only admin can verify properties
+    if (req.user.accountType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can verify properties",
+      });
+    }
+
+    const property = await Property.findByPk(req.params.id);
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    const { verified, approvalStatus, rejectionReason } = req.body;
+
+    const updateData = {};
+    if (verified !== undefined) updateData.vistaVerified = verified;
+    if (approvalStatus) updateData.approvalStatus = approvalStatus;
+    if (rejectionReason) updateData.rejectionReason = rejectionReason;
+
+    await property.update(updateData);
+
+    return res.status(200).json({
+      success: true,
+      message: "Property verification status updated",
+      data: {
+        id: property.id,
+        vistaVerified: property.vistaVerified,
+        approvalStatus: property.approvalStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Error verifying property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update verification status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Get all properties (Admin only) */
+exports.getAllProperties = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    // Only admin can access all properties
+    if (req.user.accountType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can access all properties",
+      });
+    }
+
+    const {
+      includeInactive,
+      includeImages,
+      includeAmenities,
+      includeMerchant,
+      page = 1,
+      limit = 10,
+      search,
+      propertyType,
+      city,
+      approvalStatus,
+      availabilityStatus,
+      vistaVerified,
+      merchantId,
+    } = req.query;
+
+    const where = {};
+    const include = [];
+
+    if (includeMerchant === "true") {
+      include.push({
+        model: MerchantProfile,
+        as: "merchant",
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email", "accountType"],
+          },
+        ],
+      });
+    }
+
+    if (includeAmenities === "true") {
+      include.push({
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: ["isAvailable", "notes"] },
+      });
+    }
+
+    if (includeImages === "true") {
+      include.push({
+        model: PropertyImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      });
+    }
+
+    // Filter conditions
+    if (includeInactive !== "true") where.isActive = true;
+    if (propertyType) where.propertyType = propertyType;
+    if (city) where.city = city;
+    if (approvalStatus) where.approvalStatus = approvalStatus;
+    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+    if (merchantId) where.merchantId = merchantId;
+
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+        { address: { [Op.like]: `%${search}%` } },
+        { "$merchant.businessName$": { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
+      where,
+      include,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+    };
+
+    const { count, rows: properties } = await Property.findAndCountAll(options);
+
+    return res.status(200).json({
+      success: true,
+      data: properties,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching all properties:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch properties",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};

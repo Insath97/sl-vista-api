@@ -8,6 +8,12 @@ class MerchantProfile extends Model {
       as: "user",
       onDelete: "CASCADE",
     });
+
+    this.hasMany(models.Property, {
+      foreignKey: "merchantId",
+      as: "properties",
+      onDelete: "CASCADE",
+    });
   }
 }
 
@@ -162,12 +168,10 @@ MerchantProfile.init(
       {
         fields: ["nicNumber"],
         unique: true,
-        
       },
       {
         fields: ["passportNumber"],
         unique: true,
-        
       },
       {
         fields: ["status"],
