@@ -53,6 +53,7 @@ MerchantProfile.init(
       type: DataTypes.ENUM(
         "hotel",
         "homestay",
+        "appartment",
         "tour_operator",
         "transport",
         "activity_provider",

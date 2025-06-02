@@ -3,15 +3,20 @@ const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class Amenity extends Model {
-
   static associate(models) {
     this.belongsToMany(models.Property, {
       through: models.PropertyAmenity,
       foreignKey: "amenityId",
       as: "properties",
-    })
+    });
+
+    this.belongsToMany(models.Unit, {
+      through: models.UnitAmenity,
+      foreignKey: "amenityId",
+      as: "units",
+    });
   }
- 
+
   async toggleVisibility() {
     this.isActive = !this.isActive;
     return await this.save();

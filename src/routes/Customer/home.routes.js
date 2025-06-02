@@ -11,7 +11,6 @@ const transportAgencyController = require("../../controllers/admin/transportAgen
 
 /* activity */
 
-
 /* properties */
 const validateProperty = require("../../utils/validations/property.validation");
 const propertyController = require("../../controllers/Merchant/property.controller");
@@ -28,6 +27,13 @@ router.get(
   "/transport-agencies",
   validateTransportAgency.list,
   transportAgencyController.getAllTransportAgencies
+);
+
+/* get transport agency by id */
+router.get(
+  "/transport-agency/:id",
+  validateTransportAgency.getById,
+  transportAgencyController.getTransportAgencyById
 );
 
 // Get all approved properties

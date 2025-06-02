@@ -95,3 +95,5 @@ exports.listMerchants = async (req, res, next) => {
     });
   }
 };
+
+
