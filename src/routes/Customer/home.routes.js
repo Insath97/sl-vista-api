@@ -42,6 +42,10 @@ router.get(
 );
 
 /* Get Properties By ID */
-router.get("/property/:id", propertyController.getApprovedPropertyById);
+router.get(
+  "/property/:id",
+  validateProperty.getApprovedPropertyById,
+  propertyController.getApprovedPropertyById
+);
 
 module.exports = router;
