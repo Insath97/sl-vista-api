@@ -9,8 +9,6 @@ const transportTypeController = require("../../controllers/admin/transporttype.c
 const validateTransportAgency = require("../../utils/validations/transportAgency.validation");
 const transportAgencyController = require("../../controllers/admin/transportAgency.controller");
 
-/* activity */
-
 /* properties */
 const validateProperty = require("../../utils/validations/property.validation");
 const propertyController = require("../../controllers/Merchant/property.controller");
@@ -42,5 +40,8 @@ router.get(
   validateProperty.list,
   propertyController.getAllApprovedProperties
 );
+
+/* Get Properties By ID */
+router.get("/property/:id", propertyController.getApprovedPropertyById);
 
 module.exports = router;

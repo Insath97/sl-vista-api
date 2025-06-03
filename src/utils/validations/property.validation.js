@@ -13,7 +13,7 @@ const idParam = param("id")
   .custom(async (value, { req }) => {
     const user = await User.findByPk(req.user.id, {
       include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      paranoid: false
+      paranoid: false,
     });
 
     if (!user || !user.merchantProfile) {
@@ -23,9 +23,9 @@ const idParam = param("id")
     const property = await Property.findOne({
       where: {
         id: value,
-        merchantId: user.merchantProfile.id
+        merchantId: user.merchantProfile.id,
       },
-      paranoid: false
+      paranoid: false,
     });
     if (!property) {
       throw new Error("Property not found or not owned by merchant");
@@ -38,7 +38,7 @@ const validateTitle = body("title")
   .withMessage("Title must be 2-100 characters")
   .custom(async (value, { req }) => {
     const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }]
+      include: [{ model: MerchantProfile, as: "merchantProfile" }],
     });
 
     if (!user || !user.merchantProfile) {
@@ -47,7 +47,7 @@ const validateTitle = body("title")
 
     const where = {
       title: value,
-      merchantId: user.merchantProfile.id
+      merchantId: user.merchantProfile.id,
     };
 
     if (req.params?.id) {
@@ -183,7 +183,7 @@ const propertyValidations = [
   body("availabilityStatus")
     .optional()
     .isIn(["available", "unavailable", "maintenance", "archived"])
-    .withMessage("Invalid availability status")
+    .withMessage("Invalid availability status"),
 ];
 
 // Query validations
@@ -248,7 +248,7 @@ const queryValidations = [
   query("limit")
     .optional()
     .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100")
+    .withMessage("Limit must be between 1 and 100"),
 ];
 
 // Amenity validations
@@ -276,15 +276,12 @@ const amenityValidations = [
       const amenity = await Amenity.findByPk(value);
       if (!amenity) throw new Error(`Amenity with ID ${value} not found`);
       return true;
-    })
+    }),
 ];
 
 // Image validations
 const imageValidations = [
-  body("images")
-    .optional()
-    .isArray()
-    .withMessage("Images must be an array"),
+  body("images").optional().isArray().withMessage("Images must be an array"),
 
   body("images.*.imageUrl")
     .optional()
@@ -308,23 +305,19 @@ const imageValidations = [
   body("images.*.sortOrder")
     .optional()
     .isInt()
-    .withMessage("sortOrder must be an integer")
+    .withMessage("sortOrder must be an integer"),
 ];
 
 const updateAmenitiesValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid property ID"),
+  param("id").isInt().withMessage("Invalid property ID"),
   body("amenities")
     .isArray({ min: 1 })
     .withMessage("Amenities array cannot be empty"),
-  ...amenityValidations
+  ...amenityValidations,
 ];
 
 const updateImagesValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid property ID"),
+  param("id").isInt().withMessage("Invalid property ID"),
   body("images")
     .isArray({ min: 1 })
     .withMessage("Images array cannot be empty"),
@@ -332,31 +325,21 @@ const updateImagesValidation = [
   body("images.*.id")
     .optional()
     .isInt()
-    .withMessage("Image ID must be an integer")
+    .withMessage("Image ID must be an integer"),
 ];
 
 const deleteImageValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid property ID"),
-  param("imageId")
-    .isInt()
-    .withMessage("Invalid image ID")
+  param("id").isInt().withMessage("Invalid property ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
 ];
 
 const setFeaturedImageValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid property ID"),
-  param("imageId")
-    .isInt()
-    .withMessage("Invalid image ID")
+  param("id").isInt().withMessage("Invalid property ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
 ];
 
 const verifyPropertyValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid property ID"),
+  param("id").isInt().withMessage("Invalid property ID"),
   body("verified")
     .optional()
     .isBoolean()
@@ -368,26 +351,36 @@ const verifyPropertyValidation = [
   body("rejectionReason")
     .optional()
     .isString()
-    .withMessage("rejectionReason must be a string")
+    .withMessage("rejectionReason must be a string"),
 ];
 
 const updateApprovalStatus = [
-  param('id')
-    .isInt()
-    .withMessage('Invalid property ID'),
-  body('approvalStatus')
-    .isIn(['pending', 'approved', 'rejected', 'changes_requested'])
-    .withMessage('Invalid approval status'),
-  body('rejectionReason')
-    .if(body('approvalStatus').equals('rejected'))
+  param("id").isInt().withMessage("Invalid property ID"),
+  body("approvalStatus")
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
+  body("rejectionReason")
+    .if(body("approvalStatus").equals("rejected"))
     .notEmpty()
-    .withMessage('Rejection reason is required when status is rejected')
+    .withMessage("Rejection reason is required when status is rejected")
     .optional()
     .isString()
-    .withMessage('Rejection reason must be a string')
+    .withMessage("Rejection reason must be a string")
     .isLength({ max: 1000 })
-    .withMessage('Rejection reason must be less than 1000 characters')
+    .withMessage("Rejection reason must be less than 1000 characters"),
 ];
+
+// Public property ID validation (no merchant ownership check)
+const publicIdParam = param("id")
+  .isInt()
+  .withMessage("Invalid property ID format")
+  .custom(async (value) => {
+    const property = await Property.findByPk(value, { paranoid: false });
+    if (!property) {
+      throw new Error("Property not found");
+    }
+    return true;
+  });
 
 module.exports = {
   // Create Property
@@ -396,7 +389,7 @@ module.exports = {
     validateSlug,
     ...propertyValidations,
     ...amenityValidations,
-    ...imageValidations
+    ...imageValidations,
   ],
 
   // List Properties
@@ -410,9 +403,9 @@ module.exports = {
     idParam,
     validateTitle.optional(),
     validateSlug,
-    ...propertyValidations.map(v => v.optional()),
-    ...amenityValidations.map(v => v.optional()),
-    ...imageValidations.map(v => v.optional())
+    ...propertyValidations.map((v) => v.optional()),
+    ...amenityValidations.map((v) => v.optional()),
+    ...imageValidations.map((v) => v.optional()),
   ],
 
   // Delete Property
@@ -440,5 +433,8 @@ module.exports = {
   setFeaturedImage: setFeaturedImageValidation,
 
   /* admin update approval status */
-  updateApprovalStatus: updateApprovalStatus
+  updateApprovalStatus: updateApprovalStatus,
+
+  /* public property ID validation */
+  getApprovedPropertyById: [publicIdParam],
 };

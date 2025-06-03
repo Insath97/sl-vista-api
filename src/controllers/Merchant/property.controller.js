@@ -1132,3 +1132,78 @@ exports.getAllMerchantProperties = async (req, res) => {
     });
   }
 };
+
+/* Get approved property by ID (Public endpoint) */
+exports.getApprovedPropertyById = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { id } = req.params;
+
+    // Base conditions for approved properties
+    const where = {
+      id,
+      approvalStatus: "approved",
+      isActive: true,
+    };
+
+    // Admins can view unapproved properties too
+    if (req.user?.accountType === "admin") {
+      delete where.approvalStatus;
+      delete where.isActive;
+    }
+
+    const property = await Property.findOne({
+      where,
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: PropertyImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+        },
+        {
+          model: MerchantProfile,
+          as: "merchant",
+          attributes: ["id", "businessName", "phoneNumber"],
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "accountType"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message:
+          req.user?.accountType === "admin"
+            ? "Property not found"
+            : "Approved property not found or unavailable",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: property,
+    });
+  } catch (error) {
+    console.error("Error fetching property:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch property details",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
