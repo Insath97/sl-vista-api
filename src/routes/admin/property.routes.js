@@ -16,4 +16,11 @@ router.patch(
   controller.updatePropertyApprovalStatus
 );
 
+/* Get property by ID */
+router.get(
+  "/:id",
+  validate.getApprovedPropertyById,
+  controller.getApprovedPropertyById
+);
+
 module.exports = router;

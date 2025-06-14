@@ -29,7 +29,7 @@ router.put(
 router.delete("/:id", validate.delete, controller.deleteProperty);
 
 // Restore property
-router.post("/:id/restore", validate.restore, controller.restoreProperty);
+router.patch("/:id/restore", validate.restore, controller.restoreProperty);
 
 // Toggle active status
 router.patch(

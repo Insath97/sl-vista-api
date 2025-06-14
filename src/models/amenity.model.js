@@ -10,6 +10,12 @@ class Amenity extends Model {
       as: "properties",
     });
 
+    this.belongsToMany(models.HomeStay, {
+      through: models.HomeStayAmenity,
+      foreignKey: "amenityId",
+      as: "homestays",
+    });
+
     this.belongsToMany(models.Unit, {
       through: models.UnitAmenity,
       foreignKey: "amenityId",
