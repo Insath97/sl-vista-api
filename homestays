@@ -1,0 +1,42 @@
+
+---
+
+## 📥 Form‑Data Fields
+
+| Field name           | Type                  | Required | Notes / Example value                                 |
+|----------------------|-----------------------|----------|-------------------------------------------------------|
+| **propertyId**       | `integer`             | ✅       | ID of the parent property                             |
+| **name**             | `string` (2–100)      | ✅       | “Cliff Edge Villa”                                    |
+| **description**      | `text`                | ❌       | Longer rich description                               |
+| **unitType**         | enum                  | ✅       | `entire_home`, `private_room`, `shared_room`, `villa`, `cottage`, `guest_suite` |
+| **maxGuests**        | `int` (1–20)          | ✅       | default 2                                             |
+| **maxChildren**      | `int`                 | ❌       | default 0                                             |
+| **maxInfants**       | `int`                 | ❌       | default 0                                             |
+| **bedroomCount**     | `int`                 | ✅       | default 1                                             |
+| **bathroomCount**    | `int`                 | ✅       | default 1                                             |
+| **attachedBathrooms**| `int`                 | ❌       | default 0                                             |
+| **sharedBathrooms**  | `int`                 | ❌       | default 0                                             |
+| **bathroomType**     | enum                  | ❌       | `private` \| `shared` \| `shared_floor` \| `none`     |
+| **hasHotWater**      | `boolean`             | ❌       | default `true`                                        |
+| **floorNumber**      | `int`                 | ❌       | e.g. `2` (omit for ground)                            |
+| **size**             | `int`                 | ❌       | area in sq m/ft                                       |
+| **hasKitchen**       | `boolean`             | ❌       | default `false`                                       |
+| **kitchenType**      | enum                  | ❌       | `full`, `partial`, `shared`, `none`                   |
+| **hasLivingRoom**    | `boolean`             | ❌       | default `false`                                       |
+| **hasDiningArea**    | `boolean`             | ❌       | default `false`                                       |
+| **hasBalcony**       | `boolean`             | ❌       | default `false`                                       |
+| **hasGarden**        | `boolean`             | ❌       | default `false`                                       |
+| **hasPoolAccess**    | `boolean`             | ❌       | default `false`                                       |
+| **basePrice**        | `decimal`             | ✅       | nightly base price (`99.00`)                          |
+| **cleaningFee**      | `decimal`             | ❌       | default `0`                                           |
+| **securityDeposit**  | `decimal`             | ❌       | default `0`                                           |
+| **extraGuestFee**    | `decimal`             | ❌       | default `0`                                           |
+| **minimumStay**      | `int`                 | ❌       | nights (min 1)                                        |
+| **smokingAllowed**   | `boolean`             | ❌       | default `false`                                       |
+| **petsAllowed**      | `boolean`             | ❌       | default `false`                                       |
+| **eventsAllowed**    | `boolean`             | ❌       | default `false`                                       |
+| **amenities[]**      | `array<int>`          | ❌       | One or more amenity IDs – send multiple keys:<br>`amenities[]: 1`, `amenities[]: 5` |
+| **images[]**         | `file` (multiple)     | ❌       | JPEG / PNG. First image auto‑featured. Up to 10.      |
+
+### Example `multipart/form-data` dump
+

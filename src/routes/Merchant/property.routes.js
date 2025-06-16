@@ -70,4 +70,6 @@ router.patch(
   controller.setFeaturedImage
 );
 
+router.get("/list/dropdown", controller.getMerchantPropertiesForDropdown);
+
 module.exports = router;

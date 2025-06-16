@@ -26,6 +26,7 @@ const adminPropertyRoutes = require("./src/routes/admin/property.routes");
 const propertyRoutes = require("./src/routes/Merchant/property.routes");
 const propertySettingRoutes = require("./src/routes/Merchant/propertySetting.routes");
 const unitRoutes = require("./src/routes/Merchant/unit.routes");
+const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use("/api/v1/merchants", merchantRoutes);
 app.use("/api/v1/merchants/properties", propertyRoutes);
 app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
 app.use("/api/v1/merchants/units", unitRoutes);
+app.use("/api/v1/merchants/homestays", homestayRoutes);
 
 // customer routes
 app.use("/api/v1/customer/list", customerHomeroutes);

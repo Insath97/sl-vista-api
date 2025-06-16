@@ -1,21 +1,7 @@
 const { DataTypes, Model } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-class HomeStayAmenity extends Model {
-  static associate(models) {
-    this.belongsTo(models.HomeStay, {
-      foreignKey: "homestayId",
-      as: "homestay",
-      onDelete: "CASCADE",
-    });
-    
-    this.belongsTo(models.Amenity, {
-      foreignKey: "amenityId",
-      as: "amenity",
-      onDelete: "CASCADE",
-    });
-  }
-}
+class HomeStayAmenity extends Model {}
 
 HomeStayAmenity.init(
   {
@@ -51,7 +37,7 @@ HomeStayAmenity.init(
   },
   {
     sequelize,
-    tableName: "homestay_amenities",
+    tableName: "home_stay_amenities",
     timestamps: true,
     indexes: [
       {

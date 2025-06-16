@@ -1207,3 +1207,54 @@ exports.getApprovedPropertyById = async (req, res) => {
     });
   }
 };
+
+/* merchant properties list */
+exports.getMerchantPropertiesForDropdown = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      include: [{ model: MerchantProfile, as: "merchantProfile" }],
+    });
+
+    if (!user || !user.merchantProfile) {
+      return res.status(403).json({
+        success: false,
+        message: "Merchant profile not found",
+      });
+    }
+
+    console.log(user.merchantProfile.id);
+
+    const properties = await Property.findAll({
+      where: {
+        merchantId: user.merchantProfile.id,
+        approvalStatus: "pending",
+        availabilityStatus: "available",
+        isActive: true,
+      },
+      attributes: ["id", "title"],
+      order: [["title", "ASC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: properties,
+    });
+  } catch (error) {
+    console.error("Property dropdown error:", {
+      error: error.message,
+      requestUser: req.user
+        ? {
+            id: req.user.id,
+            hasMerchantProfile: !!req.user.merchantProfile,
+            hasDataUser: !!req.user.data?.user,
+          }
+        : "No user object",
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch properties",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};

@@ -1,15 +1,7 @@
 const { DataTypes, Model } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-class HomeStayImage extends Model {
-  static associate(models) {
-    this.belongsTo(models.HomeStay, {
-      foreignKey: "homestayId",
-      as: "homestay",
-      onDelete: "CASCADE",
-    });
-  }
-}
+class HomeStayImage extends Model {}
 
 HomeStayImage.init(
   {
@@ -65,16 +57,11 @@ HomeStayImage.init(
   },
   {
     sequelize,
-    tableName: "homestay_images",
+    tableName: "home_stay_images",
     timestamps: true,
     paranoid: true,
     defaultScope: {
       order: [["sortOrder", "ASC"]],
-    },
-    scopes: {
-      featured: {
-        where: { isFeatured: true },
-      },
     },
   }
 );

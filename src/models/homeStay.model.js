@@ -1,64 +1,41 @@
 const { DataTypes, Model } = require("sequelize");
+const slugify = require("slugify");
 const { sequelize } = require("../config/database");
 
 class HomeStay extends Model {
   static associate(models) {
+    /* associations with property */
     this.belongsTo(models.Property, {
       foreignKey: "propertyId",
       as: "property",
       onDelete: "CASCADE",
     });
-    
+
+    /* associations with images */
     this.hasMany(models.HomeStayImage, {
       foreignKey: "homestayId",
       as: "images",
       onDelete: "CASCADE",
     });
-    
+
+    /* associations with amenities */
     this.belongsToMany(models.Amenity, {
       through: models.HomeStayAmenity,
       foreignKey: "homestayId",
       as: "amenities",
+      onDelete: "CASCADE",
     });
-    
-    this.hasMany(models.HomeStayAmenity, {
-      foreignKey: "homestayId",
-      as: "homestayAmenities",
-    });
-  }
-
-  // Helper methods
-  async addImages(images) {
-    return await this.sequelize.models.HomeStayImage.bulkCreate(
-      images.map(image => ({
-        homestayId: this.id,
-        ...image
-      }))
-    );
   }
 
   async addAmenities(amenityIds, options = {}) {
     return await this.sequelize.models.HomeStayAmenity.bulkCreate(
-      amenityIds.map(amenityId => ({
+      amenityIds.map((amenityId) => ({
         homestayId: this.id,
         amenityId,
-        ...options
-      }))
+        ...options,
+      })),
+      { returning: true }
     );
-  }
-
-  async setFeaturedImage(imageId) {
-    await this.sequelize.models.HomeStayImage.update(
-      { isFeatured: false },
-      { where: { homestayId: this.id } }
-    );
-    
-    const image = await this.sequelize.models.HomeStayImage.findOne({
-      where: { id: imageId, homestayId: this.id }
-    });
-    
-    if (!image) throw new Error("Image not found");
-    return await image.update({ isFeatured: true });
   }
 }
 
@@ -280,12 +257,20 @@ HomeStay.init(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
   },
   {
     sequelize,
     tableName: "home_stays",
     timestamps: true,
     paranoid: true,
+    defaultScope: {
+      where: { isActive: true },
+    },
     hooks: {
       beforeUpdate: (homestay) => {
         if (
@@ -303,17 +288,6 @@ HomeStay.init(
         }
       },
     },
-    indexes: [
-      {
-        fields: ["propertyId"],
-      },
-      {
-        fields: ["availabilityStatus"],
-      },
-      {
-        fields: ["approvalStatus"],
-      },
-    ],
   }
 );
 
