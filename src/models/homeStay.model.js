@@ -4,10 +4,10 @@ const { sequelize } = require("../config/database");
 
 class HomeStay extends Model {
   static associate(models) {
-    /* associations with property */
-    this.belongsTo(models.Property, {
-      foreignKey: "propertyId",
-      as: "property",
+    /* associations with merchant profile */
+    this.belongsTo(models.MerchantProfile, {
+      foreignKey: "merchantId",
+      as: "merchant",
       onDelete: "CASCADE",
     });
 
@@ -47,11 +47,11 @@ HomeStay.init(
       primaryKey: true,
       validate: { isInt: true },
     },
-    propertyId: {
+    merchantId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "properties",
+        model: "merchant_profiles",
         key: "id",
       },
     },

@@ -9,6 +9,9 @@ router.post("/admin/login", loginValidation, authController.adminLogin);
 // Merchant authentication
 router.post("/merchants/login", loginValidation, authController.merchantLogin);
 
+// Customer authentication
+router.post("/customer/login", loginValidation, authController.customerLogin);
+
 // Token refresh
 router.post("/refresh", authController.refreshToken);
 

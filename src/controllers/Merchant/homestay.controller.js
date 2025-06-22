@@ -27,17 +27,31 @@ const handleImageUploads = async (files, homestayId) => {
   }));
 };
 
-// Verify property belongs to merchant
-const verifyPropertyOwnership = async (propertyId, merchantId) => {
-  const property = await Property.findOne({
-    where: { id: propertyId, merchantId },
+// Helper to verify homestay ownership
+const verifyOwnership = async (homestayId, userId) => {
+  const user = await User.findByPk(userId, {
+    include: [{ model: MerchantProfile, as: "merchantProfile" }],
   });
-  if (!property) {
-    throw new Error("Property not found or doesn't belong to merchant");
+
+  if (!user || !user.merchantProfile) {
+    throw new Error("Merchant profile not found");
   }
-  return property;
+
+  const homestay = await HomeStay.findOne({
+    where: {
+      id: homestayId,
+      merchantId: user.merchantProfile.id,
+    },
+  });
+
+  if (!homestay) {
+    throw new Error("Homestay not found or not owned by merchant");
+  }
+
+  return homestay;
 };
 
+/* create homestays with login merchant */
 exports.createHomeStay = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -56,13 +70,9 @@ exports.createHomeStay = async (req, res) => {
       });
     }
 
-    const { amenities = [], ...homestayData } = req.body;
+    const { amenities, ...homestayData } = req.body;
 
-    // Verify the property belongs to the merchant
-    await verifyPropertyOwnership(
-      homestayData.propertyId,
-      user.merchantProfile.id
-    );
+    homestayData.merchantId = user.merchantProfile.id;
 
     // Create the homestay
     const homestay = await HomeStay.create(homestayData);
@@ -74,10 +84,9 @@ exports.createHomeStay = async (req, res) => {
     }
 
     console.log(amenities);
-    
 
     // Add amenities if provided (ensure it's always treated as array)
-   if (amenities?.length) {
+    if (amenities?.length) {
       await homestay.addAmenities(amenities);
     }
 
@@ -97,7 +106,6 @@ exports.createHomeStay = async (req, res) => {
             ["sortOrder", "ASC"],
           ],
         },
-
       ],
     });
 
@@ -111,6 +119,165 @@ exports.createHomeStay = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to create homestay",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* get all homestays for login merchant */
+exports.getAllHomeStays = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const user = await User.findByPk(req.user.id, {
+      include: [{ model: MerchantProfile, as: "merchantProfile" }],
+    });
+
+    if (!user || !user.merchantProfile) {
+      return res.status(403).json({
+        success: false,
+        message: "Merchant profile not found",
+      });
+    }
+
+    const {
+      isActive,
+      vistaVerified,
+      page = 1,
+      limit = 10,
+      search,
+      unitType,
+      city,
+      approvalStatus,
+      availabilityStatus,
+      merchantId,
+      minGuests,
+      maxGuests,
+      minPrice,
+      maxPrice,
+      hasKitchen,
+      hasPoolAccess,
+      includeDeleted,
+    } = req.query;
+
+    const where = { merchantId: user.merchantProfile.id };
+    const include = [
+      {
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: ["isAvailable", "notes"] },
+      },
+      {
+        model: HomeStayImage,
+        as: "images",
+        order: [
+          ["isFeatured", "DESC"],
+          ["sortOrder", "ASC"],
+        ],
+      },
+    ];
+
+    // Filter conditions
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+    if (unitType) where.unitType = unitType;
+    if (city) where.city = city;
+    if (approvalStatus) where.approvalStatus = approvalStatus;
+    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
+    if (merchantId) where.merchantId = merchantId;
+    if (minGuests) where.maxGuests = { [Op.gte]: minGuests };
+    if (maxGuests)
+      where.maxGuests = { ...where.maxGuests, [Op.lte]: maxGuests };
+    if (minPrice) where.basePrice = { [Op.gte]: minPrice };
+    if (maxPrice) where.basePrice = { ...where.basePrice, [Op.lte]: maxPrice };
+    if (hasKitchen !== undefined) where.hasKitchen = hasKitchen === "true";
+    if (hasPoolAccess !== undefined)
+      where.hasPoolAccess = hasPoolAccess === "true";
+
+    // Search functionality
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
+      where,
+      include,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: homestays } = await HomeStay.findAndCountAll(options);
+
+    return res.status(200).json({
+      success: true,
+      data: homestays,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching homestays:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch homestays",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// Get homestay by ID
+exports.getHomeStayById = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const homestay = await verifyOwnership(req.params.id, req.user.id);
+
+    const include = [
+      {
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: ["isAvailable", "notes"] },
+      },
+      {
+        model: HomeStayImage,
+        as: "images",
+        order: [
+          ["isFeatured", "DESC"],
+          ["sortOrder", "ASC"],
+        ],
+      },
+    ];
+
+    const fullHomeStay = await HomeStay.findByPk(homestay.id, {
+      include,
+      paranoid: req.query.includeDeleted === "true",
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: fullHomeStay,
+    });
+  } catch (error) {
+    console.error("Error fetching homestay:", error);
+    return res.status(error.message.includes("not found") ? 404 : 500).json({
+      success: false,
+      message: error.message || "Failed to fetch homestay",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }

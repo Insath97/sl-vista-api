@@ -33,11 +33,6 @@ class Property extends Model {
       onDelete: "CASCADE",
     });
 
-    this.hasMany(models.HomeStay, {
-      foreignKey: "propertyId",
-      as: "homestays",
-      onDelete: "CASCADE",
-    });
   }
 
   // Helper method to add images

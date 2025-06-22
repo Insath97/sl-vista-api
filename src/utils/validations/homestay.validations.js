@@ -69,27 +69,7 @@ const validateName = body("name")
 
 // HomeStay basic validations
 const homeStayValidations = [
-  body("propertyId")
-    .isInt()
-    .withMessage("Property ID must be an integer")
-    .custom(async (value, { req }) => {
-      const user = await User.findByPk(req.user.id, {
-        include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      });
-      
-      if (!user || !user.merchantProfile) {
-        throw new Error("Merchant profile not found");
-      }
-      
-      const property = await Property.findOne({
-        where: { id: value, merchantId: user.merchantProfile.id }
-      });
-      
-      if (!property) {
-        throw new Error("Property not found or not owned by merchant");
-      }
-      return true;
-    }),
+ 
 
   body("unitType")
     .isIn(["entire_home", "private_room", "shared_room", "guest_suite", "villa", "cottage"])

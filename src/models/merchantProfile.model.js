@@ -14,6 +14,12 @@ class MerchantProfile extends Model {
       as: "properties",
       onDelete: "CASCADE",
     });
+
+     this.hasMany(models.HomeStay, {
+      foreignKey: "merchantId",
+      as: "homestays",
+      onDelete: "CASCADE",
+    });
   }
 }
 
