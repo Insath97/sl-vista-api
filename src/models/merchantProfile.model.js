@@ -44,7 +44,7 @@ MerchantProfile.init(
     businessRegistrationNumber: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      unique: true,
+    /*   unique: true, */
       validate: {
         notEmpty: true,
       },

@@ -106,6 +106,11 @@ exports.merchantLogin = async (req, res) => {
   await loginUser(req, res, "merchant");
 };
 
+// Customer login
+exports.customerLogin = async (req, res) => {
+  await loginUser(req, res, "customer");
+};
+
 // Refresh token
 exports.refreshToken = async (req, res) => {
   try {

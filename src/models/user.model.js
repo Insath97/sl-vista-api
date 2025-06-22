@@ -15,6 +15,12 @@ class User extends Model {
       as: "merchantProfile",
       onDelete: "CASCADE",
     });
+
+    this.hasOne(models.CustomerProfile, {
+      foreignKey: "userId",
+      as: "customerProfile",
+      onDelete: "CASCADE",
+    });
   }
 
   // Instance method to check password
