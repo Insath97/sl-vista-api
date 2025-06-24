@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/transportAgency.controller");
 const validate = require("../../utils/validations/transportAgency.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 // Create transport agency
 router.post(

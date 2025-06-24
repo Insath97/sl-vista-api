@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const validate = require("../../utils/validations/localArtist.validation");
 const controller = require("../../controllers/admin/localArtist.controller");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 // Create local artist with images
 router.post(

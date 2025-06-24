@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 const validate = require("../../utils/validations/localArtistType.validation");
 const controller = require("../../controllers/admin/localArtistType.controller");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 /* create */
 router.post("/", validate.create, controller.createLocalArtistType);

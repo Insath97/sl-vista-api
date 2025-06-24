@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const SubCategoryController = require("../../controllers/admin/subCategory.controller");
 const SubCategoryValidation = require("../../utils/validations/subCategory.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 const subCategoryValidationRules = require("../../utils/validations/subCategory.validation");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 router.post(
   "/",

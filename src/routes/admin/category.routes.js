@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 const categoryController = require("../../controllers/admin/categoryController");
 const validation = require("../../utils/validations/category.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 /* CREATE NEW CATEGORY */
 router.post("/", validation.create, categoryController.createCategory);

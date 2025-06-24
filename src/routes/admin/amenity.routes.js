@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 const validate = require("../../utils/validations/amenity.validation");
 const amenityController = require("../../controllers/admin/amenity.controller");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 // CRUD Routes
 router.post("/", validate.create, amenityController.createAmenity);

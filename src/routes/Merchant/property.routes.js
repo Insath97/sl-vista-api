@@ -2,11 +2,11 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/Merchant/property.controller");
 const validate = require("../../utils/validations/property.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 // Apply authentication middleware to all routes
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("merchant"));
 
 // Create property
 router.post("/", uploadMiddleware, validate.create, controller.createProperty);

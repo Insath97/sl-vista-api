@@ -5,7 +5,7 @@ const authMiddleware = require("../../middlewares/authMiddleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 // Apply authentication middleware to all routes
-router.use(authMiddleware);
+
 
 // Create unit
 router.post("/", uploadMiddleware, controller.createUnit);

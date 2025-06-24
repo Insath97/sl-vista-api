@@ -7,7 +7,7 @@ const subcategoryValidation = require("../utils/subcategory.validation");
 // Create
 router.post(
     "/",
-    authMiddleware,
+    authMiddleware.authMiddleware,
     subcategoryValidation.create,
     SubcategoryController.CreateSubCategory
 );
@@ -15,14 +15,14 @@ router.post(
 // Get all
 router.get(
     "/",
-    authMiddleware,
+    authMiddleware.authMiddleware,
     SubcategoryController.getAllSubcategories
 );
 
 // Get by ID
 router.get(
     "/:id",
-    authMiddleware,
+    authMiddleware.authMiddleware,
     subcategoryValidation.getById,
     SubcategoryController.getSubCategoryById
 );
@@ -30,7 +30,7 @@ router.get(
 // Update
 router.put(
     '/:id',
-    authMiddleware,
+    authMiddleware.authMiddleware,
     subcategoryValidation.update,
     SubcategoryController.updateSubCategoryById
 );
@@ -38,7 +38,7 @@ router.put(
 // Soft Delete
 router.delete(
     "/:id",
-    authMiddleware,
+    authMiddleware.authMiddleware,
     subcategoryValidation.delete,
     SubcategoryController.deleteSubCategory
 );

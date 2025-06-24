@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/Merchant/property.controller");
 const validate = require("../../utils/validations/property.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/authMiddleware");
 
-router.use(authMiddleware);
+router.use(middleware.authMiddlewareWithProfile("admin"));
 
 /* Get all merchant properties */
 router.get("/", validate.list, controller.getAllMerchantProperties);
