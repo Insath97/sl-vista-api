@@ -27,6 +27,17 @@ class HomeStay extends Model {
     });
   }
 
+  // Add images to homestay
+  async addImages(images) {
+    return await this.sequelize.models.HomeStayImage.bulkCreate(
+      images.map((image) => ({
+        homestayId: this.id,
+        ...image,
+      }))
+    );
+  }
+
+  // Add amenities to homestay
   async addAmenities(amenityIds, options = {}) {
     return await this.sequelize.models.HomeStayAmenity.bulkCreate(
       amenityIds.map((amenityId) => ({
@@ -36,6 +47,65 @@ class HomeStay extends Model {
       })),
       { returning: true }
     );
+  }
+
+  // Update homestay images
+  async updateImages(imageUpdates) {
+    const updates = imageUpdates.map(async (update) => {
+      if (update.id) {
+        const image = await this.sequelize.models.HomeStayImage.findOne({
+          where: { id: update.id, homestayId: this.id },
+        });
+        if (!image) throw new Error(`Image with ID ${update.id} not found`);
+        return await image.update(update);
+      } else {
+        return await this.sequelize.models.HomeStayImage.create({
+          homestayId: this.id,
+          ...update,
+        });
+      }
+    });
+    return Promise.all(updates);
+  }
+
+  // Update homestay amenities
+  async updateAmenities(amenityUpdates) {
+    await this.sequelize.models.HomeStayAmenity.destroy({
+      where: { homestayId: this.id },
+    });
+    return this.addAmenities(amenityUpdates);
+  }
+
+  // Set featured image for homestay
+  async setFeaturedImage(imageId) {
+    await this.sequelize.models.HomeStayImage.update(
+      { isFeatured: false },
+      { where: { homestayId: this.id } }
+    );
+
+    const image = await this.sequelize.models.HomeStayImage.findOne({
+      where: { id: imageId, homestayId: this.id },
+    });
+
+    if (!image) throw new Error(`Image with ID ${imageId} not found`);
+
+    return await image.update({ isFeatured: true });
+  }
+
+  // Toggle amenity availability
+  async toggleAmenityAvailability(amenityId) {
+    const homestayAmenity = await this.sequelize.models.HomeStayAmenity.findOne(
+      {
+        where: { homestayId: this.id, amenityId },
+      }
+    );
+
+    if (!homestayAmenity) {
+      throw new Error("Amenity not found for this homestay");
+    }
+
+    homestayAmenity.isAvailable = !homestayAmenity.isAvailable;
+    return await homestayAmenity.save();
   }
 }
 

@@ -53,7 +53,7 @@ const validateName = body("name")
 
     const where = {
       name: value,
-      propertyId: req.body.propertyId || req.params.propertyId
+      merchantId: user.merchantProfile.id,
     };
 
     if (req.params?.id) {
@@ -62,7 +62,7 @@ const validateName = body("name")
 
     const exists = await HomeStay.findOne({ where });
     if (exists) {
-      throw new Error("You already have a homestay with this name in this property");
+      throw new Error("You already have a homestay with this name");
     }
     return true;
   });
@@ -70,7 +70,6 @@ const validateName = body("name")
 // HomeStay basic validations
 const homeStayValidations = [
  
-
   body("unitType")
     .isIn(["entire_home", "private_room", "shared_room", "guest_suite", "villa", "cottage"])
     .withMessage("Invalid unit type"),
@@ -221,11 +220,7 @@ const homeStayValidations = [
 
 // Query validations
 const queryValidations = [
-  query("propertyId")
-    .optional()
-    .isInt()
-    .withMessage("Property ID must be an integer"),
-
+ 
   query("includeInactive")
     .optional()
     .isBoolean()

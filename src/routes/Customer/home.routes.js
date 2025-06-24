@@ -13,6 +13,10 @@ const transportAgencyController = require("../../controllers/admin/transportAgen
 const validateProperty = require("../../utils/validations/property.validation");
 const propertyController = require("../../controllers/Merchant/property.controller");
 
+/* homestays */
+const validateHomeStay = require("../../utils/validations/homestay.validations");
+const homeStayController = require("../../controllers/Merchant/homestay.controller");
+
 /* get all transport types */
 router.get(
   "/transport-types",
@@ -46,6 +50,19 @@ router.get(
   "/property/:id",
   validateProperty.getApprovedPropertyById,
   propertyController.getApprovedPropertyById
+);
+
+/* Get all homestays */
+router.get(
+  "/homestays",
+  validateHomeStay.list,
+  homeStayController.getAllHomeStaysForListing
+);
+
+/* Get Homestays By ID */
+router.get(
+  "/homestay/:id",
+  homeStayController.getHomeStayDetails
 );
 
 module.exports = router;

@@ -7,13 +7,13 @@ const validate = require("../../utils/validations/homestay.validations");
 
 router.use(authMiddleware);
 
-/*  */
+/* create homestay */
 router.post("/", uploadMiddleware, validate.create, controller.createHomeStay);
 
-/*  */
-router.get("/", controller.getAllHomeStays);
+/* get all homestays */
+router.get("/", validate.list, controller.getAllHomeStays);
 
-/*  */
-router.get("/:id", controller.getHomeStayById);
+/* get homestay by ID */
+router.get("/:id", validate.getById, controller.getHomeStayById);
 
 module.exports = router;
