@@ -24,6 +24,7 @@ const localArtistRoutes = require("./src/routes/admin/localArtist.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 const adminPropertyRoutes = require("./src/routes/admin/property.routes");
 const propertyRoutes = require("./src/routes/Merchant/property.routes");
+const adminhHomestaysRoutes = require("./src/routes/admin/homestays.routes");
 const propertySettingRoutes = require("./src/routes/Merchant/propertySetting.routes");
 const unitRoutes = require("./src/routes/Merchant/unit.routes");
 const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
@@ -64,6 +65,7 @@ app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
 app.use("/api/v1/admin/local-artist-types", localArtistTypeRoutes);
 app.use("/api/v1/admin/local-artists", localArtistRoutes);
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
+app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
 
 // merchant routes

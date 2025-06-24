@@ -28,8 +28,8 @@ const idParam = param("id")
           [Op.in]: sequelize.literal(`(
             SELECT id FROM properties 
             WHERE merchantId = ${user.merchantProfile.id}
-          )`)
-        }
+          )`),
+        },
       },
       paranoid: false,
     });
@@ -69,9 +69,15 @@ const validateName = body("name")
 
 // HomeStay basic validations
 const homeStayValidations = [
- 
   body("unitType")
-    .isIn(["entire_home", "private_room", "shared_room", "guest_suite", "villa", "cottage"])
+    .isIn([
+      "entire_home",
+      "private_room",
+      "shared_room",
+      "guest_suite",
+      "villa",
+      "cottage",
+    ])
     .withMessage("Invalid unit type"),
 
   body("description")
@@ -112,9 +118,7 @@ const homeStayValidations = [
     .isIn(["private", "shared", "shared_floor", "none"])
     .withMessage("Invalid bathroom type"),
 
-  body("hasHotWater")
-    .isBoolean()
-    .withMessage("hasHotWater must be a boolean"),
+  body("hasHotWater").isBoolean().withMessage("hasHotWater must be a boolean"),
 
   body("floorNumber")
     .optional()
@@ -126,9 +130,7 @@ const homeStayValidations = [
     .isInt({ min: 1 })
     .withMessage("Size must be a positive integer"),
 
-  body("hasKitchen")
-    .isBoolean()
-    .withMessage("hasKitchen must be a boolean"),
+  body("hasKitchen").isBoolean().withMessage("hasKitchen must be a boolean"),
 
   body("kitchenType")
     .optional()
@@ -143,13 +145,9 @@ const homeStayValidations = [
     .isBoolean()
     .withMessage("hasDiningArea must be a boolean"),
 
-  body("hasBalcony")
-    .isBoolean()
-    .withMessage("hasBalcony must be a boolean"),
+  body("hasBalcony").isBoolean().withMessage("hasBalcony must be a boolean"),
 
-  body("hasGarden")
-    .isBoolean()
-    .withMessage("hasGarden must be a boolean"),
+  body("hasGarden").isBoolean().withMessage("hasGarden must be a boolean"),
 
   body("hasPoolAccess")
     .isBoolean()
@@ -158,25 +156,25 @@ const homeStayValidations = [
   body("basePrice")
     .isDecimal()
     .withMessage("Base price must be a decimal number")
-    .custom(value => value >= 0)
+    .custom((value) => value >= 0)
     .withMessage("Base price cannot be negative"),
 
   body("cleaningFee")
     .isDecimal()
     .withMessage("Cleaning fee must be a decimal number")
-    .custom(value => value >= 0)
+    .custom((value) => value >= 0)
     .withMessage("Cleaning fee cannot be negative"),
 
   body("securityDeposit")
     .isDecimal()
     .withMessage("Security deposit must be a decimal number")
-    .custom(value => value >= 0)
+    .custom((value) => value >= 0)
     .withMessage("Security deposit cannot be negative"),
 
   body("extraGuestFee")
     .isDecimal()
     .withMessage("Extra guest fee must be a decimal number")
-    .custom(value => value >= 0)
+    .custom((value) => value >= 0)
     .withMessage("Extra guest fee cannot be negative"),
 
   body("minimumStay")
@@ -187,9 +185,7 @@ const homeStayValidations = [
     .isBoolean()
     .withMessage("smokingAllowed must be a boolean"),
 
-  body("petsAllowed")
-    .isBoolean()
-    .withMessage("petsAllowed must be a boolean"),
+  body("petsAllowed").isBoolean().withMessage("petsAllowed must be a boolean"),
 
   body("eventsAllowed")
     .isBoolean()
@@ -220,7 +216,6 @@ const homeStayValidations = [
 
 // Query validations
 const queryValidations = [
- 
   query("includeInactive")
     .optional()
     .isBoolean()
@@ -243,7 +238,14 @@ const queryValidations = [
 
   query("unitType")
     .optional()
-    .isIn(["entire_home", "private_room", "shared_room", "guest_suite", "villa", "cottage"])
+    .isIn([
+      "entire_home",
+      "private_room",
+      "shared_room",
+      "guest_suite",
+      "villa",
+      "cottage",
+    ])
     .withMessage("Invalid unit type"),
 
   query("minGuests")
@@ -487,3 +489,40 @@ module.exports = {
   /* public homestay ID validation */
   getApprovedHomeStayById: [publicIdParam],
 };
+
+exports.updateApprovalStatusValidation = [
+  param("id")
+    .isInt()
+    .withMessage("Invalid homestay ID")
+    .custom(async (id) => {
+      const homestay = await HomeStay.findByPk(id);
+      if (!homestay) throw new Error("Homestay not found");
+      return true;
+    }),
+
+  body("approvalStatus")
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
+
+  body("rejectionReason")
+    .if(body("approvalStatus").equals("rejected"))
+    .notEmpty()
+    .withMessage("Rejection reason is required when status is rejected")
+    .isString()
+    .withMessage("Rejection reason must be a string")
+    .isLength({ max: 1000 })
+    .withMessage("Rejection reason must be less than 1000 characters"),
+];
+
+exports.toggleVistaVerificationValidation = [
+  param("id")
+    .isInt()
+    .withMessage("Invalid homestay ID")
+    .custom(async (id) => {
+      const homestay = await HomeStay.findByPk(id);
+      if (!homestay) throw new Error("Homestay not found");
+      return true;
+    }),
+
+  body("verified").isBoolean().withMessage("Verified must be a boolean value"),
+];

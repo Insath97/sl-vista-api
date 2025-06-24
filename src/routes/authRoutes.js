@@ -9,6 +9,9 @@ router.post("/admin/login", loginValidation, authController.adminLogin);
 // Merchant authentication
 router.post("/merchants/login", loginValidation, authController.merchantLogin);
 
+/* common login for admin and merchant */
+router.post("/login", loginValidation, authController.unifiedLogin);
+
 // Customer authentication
 router.post("/customer/login", loginValidation, authController.customerLogin);
 

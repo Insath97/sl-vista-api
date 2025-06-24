@@ -8,7 +8,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
   // Access token cookie (short-lived)
   res.cookie("accessToken", accessToken, {
     ...cookieOptions,
-    maxAge: 15 * 60 * 1000, // 15 minutes
+    maxAge: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
   });
 
   // Refresh token cookie (long-lived)
@@ -21,7 +21,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
   // Also return the tokens in the response for clients that need them
   return {
     accessToken,
-    refreshToken
+    refreshToken,
   };
 };
 

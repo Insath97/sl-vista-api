@@ -51,6 +51,8 @@ const verifyOwnership = async (homestayId, userId) => {
   return homestay;
 };
 
+/* ############################################################ merchant ########################################################### */
+
 /* create homestays with login merchant */
 exports.createHomeStay = async (req, res) => {
   const errors = validationResult(req);
@@ -359,6 +361,8 @@ exports.updateHomeStay = async (req, res) => {
 /* soft-delete homestay */
 exports.deleteHomestay = async (req, res) => {};
 
+/* ################################################### customer page ######################################################### */
+
 /* get all homestays for listing */
 exports.getAllHomeStaysForListing = async (req, res) => {
   const errors = validationResult(req);
@@ -483,6 +487,180 @@ exports.getHomeStayDetails = async (req, res) => {
           order: [
             ["isFeatured", "DESC"],
             ["sortOrder", "ASC"],
+          ],
+        },
+      ],
+      paranoid: req.query.includeDeleted === "true",
+    });
+
+    if (!homestay) {
+      return res.status(404).json({
+        success: false,
+        message: "Homestay not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: homestay,
+    });
+  } catch (error) {
+    console.error("Error fetching homestay details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch homestay details",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* ########################################## Admin ########################################################################## */
+exports.getAllHomestaysForAdmin = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const {
+      isActive,
+      vistaVerified,
+      page = 1,
+      limit = 10,
+      search,
+      unitType,
+      city,
+      approvalStatus,
+      availabilityStatus,
+      merchantId,
+      minGuests,
+      maxGuests,
+      minPrice,
+      maxPrice,
+      hasKitchen,
+      hasPoolAccess,
+      includeDeleted,
+    } = req.query;
+
+    const where = {};
+    const include = [
+      {
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: ["isAvailable", "notes"] },
+      },
+      {
+        model: HomeStayImage,
+        as: "images",
+        order: [
+          ["isFeatured", "DESC"],
+          ["sortOrder", "ASC"],
+        ],
+      },
+      {
+        model: MerchantProfile,
+        as: "merchant",
+        attributes: ["id", "businessName"],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email", "accountType", "isActive"],
+          },
+        ],
+      },
+    ];
+
+    // Filter conditions
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+    if (unitType) where.unitType = unitType;
+    if (city) where.city = city;
+    if (approvalStatus) where.approvalStatus = approvalStatus;
+    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
+    if (merchantId) where.merchantId = merchantId;
+    if (minGuests) where.maxGuests = { [Op.gte]: minGuests };
+    if (maxGuests)
+      where.maxGuests = { ...where.maxGuests, [Op.lte]: maxGuests };
+    if (minPrice) where.basePrice = { [Op.gte]: minPrice };
+    if (maxPrice) where.basePrice = { ...where.basePrice, [Op.lte]: maxPrice };
+    if (hasKitchen !== undefined) where.hasKitchen = hasKitchen === "true";
+    if (hasPoolAccess !== undefined)
+      where.hasPoolAccess = hasPoolAccess === "true";
+
+    // Search functionality
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
+      where,
+      include,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: homestays } = await HomeStay.findAndCountAll(options);
+
+    return res.status(200).json({
+      success: true,
+      data: homestays,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching homestays:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch homestays",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+exports.getHomestayByIdForAdmin = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const homestay = await HomeStay.findByPk(req.params.id, {
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: ["isAvailable", "notes"] },
+        },
+        {
+          model: HomeStayImage,
+          as: "images",
+          order: [
+            ["isFeatured", "DESC"],
+            ["sortOrder", "ASC"],
+          ],
+        },
+        {
+          model: MerchantProfile,
+          as: "merchant",
+          attributes: ["id", "businessName"],
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "email", "accountType", "isActive"],
+            },
           ],
         },
       ],

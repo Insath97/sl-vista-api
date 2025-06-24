@@ -162,3 +162,49 @@ exports.logout = (req, res) => {
     message: "Logged out successfully",
   });
 };
+
+/* Single login routes */
+exports.unifiedLogin = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    // Find user with password and both profile types
+    const user = await User.scope("withPassword").findOne({
+      where: { email },
+      include: [
+        { model: AdminProfile, as: "adminProfile", required: false },
+        { model: MerchantProfile, as: "merchantProfile", required: false },
+      ],
+    });
+
+    if (!user || !(await user.isPasswordMatch(password))) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // Generate tokens
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
+    setAuthCookies(res, accessToken, refreshToken);
+
+    // Prepare response with user type
+    const response = {
+      success: true,
+      userType: user.accountType,
+      user: {
+        id: user.id,
+        email: user.email,
+        ...(user.adminProfile && { adminProfile: user.adminProfile }),
+        ...(user.merchantProfile && { merchantProfile: user.merchantProfile }),
+      },
+    };
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ message: "Login failed", error: error.message });
+  }
+};
