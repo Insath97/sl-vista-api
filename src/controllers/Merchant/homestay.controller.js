@@ -515,6 +515,7 @@ exports.getHomeStayDetails = async (req, res) => {
 };
 
 /* ########################################## Admin ########################################################################## */
+/*  */
 exports.getAllHomestaysForAdmin = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -629,6 +630,7 @@ exports.getAllHomestaysForAdmin = async (req, res) => {
   }
 };
 
+/* Get homestay by ID for admin */
 exports.getHomestayByIdForAdmin = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -687,3 +689,67 @@ exports.getHomestayByIdForAdmin = async (req, res) => {
     });
   }
 };
+
+/* Update approval status for admin */
+exports.updateApprovalStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { approvalStatus, rejectionReason } = req.body;
+
+    const homestay = await HomeStay.findByPk(req.params.id);
+    if (!homestay) {
+      return res.status(404).json({
+        success: false,
+        message: "Homestay not found",
+      });
+    }
+
+    if (!approvalStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "Approval status is required",
+      });
+    }
+
+    /* Validate rejection reason if status is rejected */
+    if (approvalStatus === "rejected" && !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required when status is rejected",
+      });
+    }
+
+    const updateData = {
+      approvalStatus,
+      lastStatusChange: new Date(),
+    };
+
+    if (approvalStatus === "approved") {
+      updateData.approvedAt = new Date();
+      updateData.rejectionReason = null;
+    } else if (approvalStatus === "rejected") {
+      updateData.rejectionReason = rejectionReason;
+    }
+
+    await homestay.update(updateData);
+
+    return res.status(200).json({
+      success: true,
+      message: "Approval status updated successfully",
+      data: homestay,
+    });
+  } catch (error) {
+    console.error("Error updating approval status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update approval status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+
