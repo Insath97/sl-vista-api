@@ -1,6 +1,7 @@
 const User = require("../../models/user.model");
 const AdminProfile = require("../../models/adminProfile.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
+const CustomerProfile = require("../../models/customerProfile.model");
 const { validationResult } = require("express-validator");
 const { setAuthCookies, clearAuthCookies } = require("../../utils/cookies");
 const {
@@ -33,7 +34,9 @@ const loginUser = async (req, res, accountType) => {
     const includeOptions =
       accountType === "admin"
         ? [{ model: AdminProfile, as: "adminProfile" }]
-        : [{ model: MerchantProfile, as: "merchantProfile" }];
+        : accountType === "merchant"
+        ? [{ model: MerchantProfile, as: "merchantProfile" }]
+        : [{ model: CustomerProfile, as: "customerProfile" }]; // Added customer profile
 
     const foundUser = await User.scope("withPassword").findOne({
       where: { email },
@@ -80,8 +83,11 @@ const loginUser = async (req, res, accountType) => {
           ...(userData.merchantProfile && {
             merchantProfile: userData.merchantProfile,
           }),
+          ...(userData.customerProfile && {
+            customerProfile: userData.customerProfile,
+          }),
         },
-        tokens, // Include tokens in response for clients that need them
+        tokens,
       },
     };
 
@@ -179,6 +185,7 @@ exports.unifiedLogin = async (req, res) => {
       include: [
         { model: AdminProfile, as: "adminProfile", required: false },
         { model: MerchantProfile, as: "merchantProfile", required: false },
+        { model: CustomerProfile, as: 'customerProfile', required: false }
       ],
     });
 
@@ -200,6 +207,7 @@ exports.unifiedLogin = async (req, res) => {
         email: user.email,
         ...(user.adminProfile && { adminProfile: user.adminProfile }),
         ...(user.merchantProfile && { merchantProfile: user.merchantProfile }),
+        ...(user.customerProfile && { customerProfile: user.customerProfile }),
       },
     };
 

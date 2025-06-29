@@ -70,51 +70,69 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
 
   return async (req, res, next) => {
     try {
-      // Token extraction
+      // Token extraction (same as before)
       const token =
         req.cookies.accessToken ||
         (req.headers.authorization?.startsWith("Bearer ") &&
           req.headers.authorization.split(" ")[1]);
 
-      if (!token)
+      if (!token) {
         return res.status(401).json({
           success: false,
           message: "Access denied. No token provided.",
         });
+      }
 
-      // Token verification
+      // Token verification (same as before)
       const decoded = verifyToken(token);
-      if (!decoded)
+      if (!decoded) {
         return res.status(401).json({
           success: false,
           message: "User belonging to this token no longer exists.",
         });
+      }
 
-      // Determine which profiles to include based on required roles
+      // Fixed include options - use explicit model references
       const include = [];
-      const validRoles = ["admin", "merchant", "customer"]; // Add other roles if needed
 
-      // Automatically include all requested profile associations
-      requiredRoles.forEach((role) => {
-        if (validRoles.includes(role)) {
-          include.push({
-            model: {
-              admin: AdminProfile,
-              merchant: MerchantProfile,
-            }[role],
-            as: `${role}Profile`,
-            required: false, // Important: make non-required to allow role checking
-          });
-        }
-      });
+      if (requiredRoles.includes("admin")) {
+        include.push({
+          model: AdminProfile,
+          as: "adminProfile",
+          required: false,
+        });
+      }
+
+      if (requiredRoles.includes("merchant")) {
+        include.push({
+          model: MerchantProfile,
+          as: "merchantProfile",
+          required: false,
+        });
+      }
+
+      if (requiredRoles.includes("customer")) {
+        include.push({
+          model: CustomerProfile,
+          as: "customerProfile",
+          required: false,
+        });
+      }
 
       // User lookup
-      const user = await User.findByPk(decoded.id, { include });
-      if (!user)
+      const user = await User.findByPk(decoded.id, {
+        include,
+        attributes: {
+          exclude: ["password"], // Always exclude sensitive data
+        },
+      });
+
+      if (!user) {
         return res.status(401).json({
           success: false,
           message: "User not found",
         });
+      }
 
       // Role verification - check if user has at least one of the required roles
       if (
@@ -129,21 +147,21 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
         });
       }
 
-      // Attach user to request
+      // Attach user and profiles to request
       req.user = user;
-
-      // Convenience properties for quick access
       req.isAdmin = user.accountType === "admin";
       req.isMerchant = user.accountType === "merchant";
+      req.isCustomer = user.accountType === "customer";
 
-      // Attach specific profile if exists
+      // Attach specific profiles if they exist
       if (user.adminProfile) req.adminProfile = user.adminProfile;
       if (user.merchantProfile) req.merchantProfile = user.merchantProfile;
+      if (user.customerProfile) req.customerProfile = user.customerProfile;
 
       next();
     } catch (error) {
       console.error("Auth Middleware Error:", error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Authentication failed",
         error:

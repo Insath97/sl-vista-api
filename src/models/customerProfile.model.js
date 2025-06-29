@@ -8,6 +8,13 @@ class CustomerProfile extends Model {
       as: "user",
       onDelete: "CASCADE",
     });
+
+    /* Associations with bookings */
+    this.hasMany(models.Booking, {
+      foreignKey: "customerId",
+      as: "bookings",
+      onDelete: "CASCADE",
+    });
   }
 }
 

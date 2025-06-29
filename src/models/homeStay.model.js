@@ -25,6 +25,13 @@ class HomeStay extends Model {
       as: "amenities",
       onDelete: "CASCADE",
     });
+
+    /* associations with bookings */
+    this.hasMany(models.Booking, {
+      foreignKey: "homestayId",
+      as: "bookings",
+      onDelete: "CASCADE",
+    });
   }
 
   // Add images to homestay
