@@ -90,18 +90,23 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
           message: "User belonging to this token no longer exists.",
         });
 
-      // Determine which profile to include based on required roles
+      // Determine which profiles to include based on required roles
       const include = [];
-      if (requiredRoles.includes("admin"))
-        include.push({
-          model: AdminProfile,
-          as: "adminProfile",
-        });
-      if (requiredRoles.includes("merchant"))
-        include.push({
-          model: MerchantProfile,
-          as: "merchantProfile",
-        });
+      const validRoles = ["admin", "merchant", "customer"]; // Add other roles if needed
+
+      // Automatically include all requested profile associations
+      requiredRoles.forEach((role) => {
+        if (validRoles.includes(role)) {
+          include.push({
+            model: {
+              admin: AdminProfile,
+              merchant: MerchantProfile,
+            }[role],
+            as: `${role}Profile`,
+            required: false, // Important: make non-required to allow role checking
+          });
+        }
+      });
 
       // User lookup
       const user = await User.findByPk(decoded.id, { include });
@@ -111,16 +116,30 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
           message: "User not found",
         });
 
-      // Role verification
-      if (requiredRoles.length && !requiredRoles.includes(user.accountType)) {
+      // Role verification - check if user has at least one of the required roles
+      if (
+        requiredRoles.length > 0 &&
+        !requiredRoles.includes(user.accountType)
+      ) {
         return res.status(403).json({
           success: false,
-          message: "Insufficient permissions",
+          message: `Insufficient permissions. Required roles: ${requiredRoles.join(
+            ", "
+          )}`,
         });
       }
 
       // Attach user to request
       req.user = user;
+
+      // Convenience properties for quick access
+      req.isAdmin = user.accountType === "admin";
+      req.isMerchant = user.accountType === "merchant";
+
+      // Attach specific profile if exists
+      if (user.adminProfile) req.adminProfile = user.adminProfile;
+      if (user.merchantProfile) req.merchantProfile = user.merchantProfile;
+
       next();
     } catch (error) {
       console.error("Auth Middleware Error:", error);

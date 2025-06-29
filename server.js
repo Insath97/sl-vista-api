@@ -30,6 +30,7 @@ const unitRoutes = require("./src/routes/Merchant/unit.routes");
 const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
 const customerRegistrationRoutes = require("./src/routes/Customer/customer.routes");
 const customerListRoutes = require("./src/routes/admin/customerList.routes");
+const commonRoutes = require("./src/routes/common.routes");
 
 const app = express();
 
@@ -74,6 +75,9 @@ app.use("/api/v1/merchants/properties", propertyRoutes);
 app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
 app.use("/api/v1/merchants/units", unitRoutes);
 app.use("/api/v1/merchants/homestays", homestayRoutes);
+
+// common routes
+app.use("/api/v1/homestays", commonRoutes);
 
 // customer routes
 app.use("/api/v1/customer", customerRegistrationRoutes);
