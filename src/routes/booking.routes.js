@@ -11,7 +11,7 @@ router.post("/",middleware.authMiddleware, validate.createBookingValidation, con
 /* Get all bookings */
 router.get(
   "/",
-  middleware.authMiddlewareWithProfile(["admin", "merchant", "customer"]),
+  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   validate.listBookingsValidation,
   controller.getAllBookings
 );
