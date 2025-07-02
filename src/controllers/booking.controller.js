@@ -114,7 +114,7 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-/* list all booking */
+/* list all booking for admin and merchant*/
 exports.getAllBookings = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
@@ -179,6 +179,66 @@ exports.getAllBookings = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bookings",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* listing all booking for customer */
+exports.getCustomerBookings = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, fromDate, toDate } = req.query;
+
+    const offset = (page - 1) * limit;
+    const where = {};
+    const include = [
+      {
+        model: HomeStay,
+        as: "homestay",
+        attributes: ["id", "name", "merchantId"],
+        include: [],
+      },
+    ];
+
+    if (req.user.accountType === "customer") {
+      where.customerId = req.user.customerProfile.id;
+    }
+    // Status filter
+    if (status) {
+      where.bookingStatus = status;
+    }
+
+    // Date range filter
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt[Op.gte] = new Date(fromDate);
+      if (toDate) where.createdAt[Op.lte] = new Date(toDate);
+    }
+
+    const { count, rows: bookings } = await Booking.findAndCountAll({
+      where,
+      include,
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      distinct: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: bookings,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching customer bookings:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer bookings",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }

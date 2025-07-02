@@ -16,4 +16,6 @@ router.get(
   controller.getAllBookings
 );
 
+router.get("/list",middleware.authMiddleware,controller.getCustomerBookings);
+
 module.exports = router;

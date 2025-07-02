@@ -12,4 +12,11 @@ router.get(
   homestaycontroller.getAllHomeStays
 );
 
+router.get(
+  "/:id",
+  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
+  validate.getById,
+  homestaycontroller.getHomeStayById
+);
+
 module.exports = router;
