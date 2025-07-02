@@ -15,8 +15,7 @@ router.get(
 router.get(
   "/:id",
   middleware.authMiddlewareWithProfile(["admin", "merchant"]),
-  validate.getById,
-  homestaycontroller.getHomeStayById
+  homestaycontroller.getHomeStayByIdForAdminAndMerchant
 );
 
 module.exports = router;
