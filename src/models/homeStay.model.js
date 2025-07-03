@@ -140,7 +140,7 @@ HomeStay.init(
         len: [2, 100],
       },
     },
-    description: {
+  /*   description: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
@@ -175,7 +175,7 @@ HomeStay.init(
       allowNull: false,
       defaultValue: 0,
     },
-    /* bedroomCount: {
+    bedroomCount: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
