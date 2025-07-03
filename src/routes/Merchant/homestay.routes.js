@@ -8,7 +8,7 @@ const validate = require("../../utils/validations/homestay.validations");
 router.use(middleware.authMiddlewareWithProfile("merchant"));
 
 /* create homestay */
-router.post("/", uploadMiddleware, validate.create, controller.createHomeStay);
+router.post("/", uploadMiddleware, controller.createHomeStay);
 
 /* get all homestays */
 router.get("/", validate.list, controller.getAllHomeStays);

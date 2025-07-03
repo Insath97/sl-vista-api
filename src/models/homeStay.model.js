@@ -175,7 +175,7 @@ HomeStay.init(
       allowNull: false,
       defaultValue: 0,
     },
-    bedroomCount: {
+    /* bedroomCount: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
@@ -288,7 +288,7 @@ HomeStay.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-    },
+    }, */
     vistaVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
