@@ -474,7 +474,14 @@ exports.getHomeStayDetails = async (req, res) => {
   }
 
   try {
-    const homestay = await HomeStay.findByPk(req.params.id, {
+    const { includeDeleted } = req.query;
+
+    const homestay = await HomeStay.findOne({
+      where: {
+        id: req.params.id,
+        isActive: true,
+        approvalStatus: "approved",
+      },
       include: [
         {
           model: Amenity,
@@ -490,13 +497,13 @@ exports.getHomeStayDetails = async (req, res) => {
           ],
         },
       ],
-      paranoid: req.query.includeDeleted === "true",
+      paranoid: includeDeleted !== "true", // Use soft-deleted records only if requested
     });
 
     if (!homestay) {
       return res.status(404).json({
         success: false,
-        message: "Homestay not found",
+        message: "Homestay not found or not approved/active",
       });
     }
 
@@ -515,7 +522,6 @@ exports.getHomeStayDetails = async (req, res) => {
 };
 
 /* ########################################## Admin ########################################################################## */
-
 
 /* Update approval status for admin */
 exports.updateApprovalStatus = async (req, res) => {
