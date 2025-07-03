@@ -21,7 +21,7 @@ router.get(
 
 router.get(
   "/:id",
-  middleware.authMiddlewareWithProfile("admin"),
+  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   validate.getById,
   amenityController.getAmenityById
 );

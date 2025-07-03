@@ -134,10 +134,15 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
         });
       }
 
-      // Role verification - check if user has at least one of the required roles
+    /*   // Role verification - check if user has at least one of the required roles
+      const normalizedAccountType = user.accountType.toLowerCase();
+      const normalizedRequiredRoles = requiredRoles.map((role) =>
+        role.toLowerCase()
+      );
+
       if (
         requiredRoles.length > 0 &&
-        !requiredRoles.includes(user.accountType)
+        !normalizedRequiredRoles.includes(normalizedAccountType)
       ) {
         return res.status(403).json({
           success: false,
@@ -145,7 +150,7 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
             ", "
           )}`,
         });
-      }
+      } */
 
       // Attach user and profiles to request
       req.user = user;
