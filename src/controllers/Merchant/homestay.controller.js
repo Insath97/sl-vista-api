@@ -94,24 +94,16 @@ exports.createHomeStay = async (req, res) => {
     // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
       include: [
-       /*  {
+        /* {
           model: Amenity,
           as: "amenities",
           through: { attributes: ["isAvailable", "notes"] },
         }, */
-       /*  {
+        {
           model: HomeStayImage,
           as: "images",
-        }, */
+        }, 
       ],
-    });
-
-    console.log(newHomeStay);
-
-    console.log("Final response data:", {
-      success: true,
-      message: "Homestay created successfully",
-      data: newHomeStay,
     });
 
     return res.status(201).json({
@@ -731,7 +723,7 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
 
   try {
     const include = [
-      /* {
+     {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
@@ -743,7 +735,7 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
           ["isFeatured", "DESC"],
           ["sortOrder", "ASC"],
         ],
-      }, */
+      }, 
     ];
 
     // Additional includes for admin
