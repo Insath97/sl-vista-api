@@ -4,7 +4,6 @@ const UploadService = require("../../helpers/upload");
 const HomeStay = require("../../models/homeStay.model");
 const HomeStayImage = require("../../models/homestayImage.model");
 const Amenity = require("../../models/amenity.model");
-const Property = require("../../models/property.model");
 const User = require("../../models/user.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
 
@@ -103,10 +102,6 @@ exports.createHomeStay = async (req, res) => {
         {
           model: HomeStayImage,
           as: "images",
-          order: [
-            ["isFeatured", "DESC"],
-            ["sortOrder", "ASC"],
-          ],
         },
       ],
     });
