@@ -636,7 +636,7 @@ exports.getAllHomeStays = async (req, res) => {
 
     // Common include for both roles
     const include = [
-      {
+      /* {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
@@ -648,7 +648,7 @@ exports.getAllHomeStays = async (req, res) => {
           ["isFeatured", "DESC"],
           ["sortOrder", "ASC"],
         ],
-      },
+      }, */
     ];
 
     // Additional includes for admin
