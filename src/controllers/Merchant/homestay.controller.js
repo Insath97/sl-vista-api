@@ -99,10 +99,10 @@ exports.createHomeStay = async (req, res) => {
           as: "amenities",
           through: { attributes: ["isAvailable", "notes"] },
         },
-        {
+       /*  {
           model: HomeStayImage,
           as: "images",
-        },
+        }, */
       ],
     });
 
