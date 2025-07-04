@@ -54,7 +54,7 @@ const verifyOwnership = async (homestayId, userId) => {
 /* ############################################################ merchant ########################################################### */
 
 /* create homestays with login merchant */
-exports.createHomeStay = async (req, res) => {
+ exports.createHomeStay = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
@@ -79,8 +79,6 @@ exports.createHomeStay = async (req, res) => {
     // Create the homestay
     const homestay = await HomeStay.create(homestayData);
 
-    console.log("Homestay created:", homestay); 
-
     // Handle image uploads
     const images = await handleImageUploads(req.files, homestay.id);
     if (images.length > 0) {
@@ -96,7 +94,7 @@ exports.createHomeStay = async (req, res) => {
 
     // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
-      include: [
+      /* include: [
         {
           model: Amenity,
           as: "amenities",
@@ -110,7 +108,15 @@ exports.createHomeStay = async (req, res) => {
             ["sortOrder", "ASC"],
           ],
         },
-      ],
+      ], */
+    });
+
+    console.log(newHomeStay);
+
+    console.log("Final response data:", {
+      success: true,
+      message: "Homestay created successfully",
+      data: newHomeStay,
     });
 
     return res.status(201).json({
@@ -126,7 +132,8 @@ exports.createHomeStay = async (req, res) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-};
+}; 
+
 
 /* get all homestays for login merchant */
 exports.getAllHomeStays = async (req, res) => {

@@ -48,7 +48,10 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.urlencoded({ extended: true }));
+
+// In your Express app
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
 app.use("/api/v1/admins", adminRoutes);
