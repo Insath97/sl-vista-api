@@ -94,7 +94,7 @@ const verifyOwnership = async (homestayId, userId) => {
 
     // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
-      /* include: [
+      include: [
         {
           model: Amenity,
           as: "amenities",
@@ -108,7 +108,7 @@ const verifyOwnership = async (homestayId, userId) => {
             ["sortOrder", "ASC"],
           ],
         },
-      ], */
+      ],
     });
 
     console.log(newHomeStay);
