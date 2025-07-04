@@ -140,7 +140,7 @@ HomeStay.init(
         len: [2, 100],
       },
     },
-  /*   description: {
+    description: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
@@ -162,7 +162,7 @@ HomeStay.init(
       defaultValue: 2,
       validate: {
         min: 1,
-        max: 20,
+        max: 40,
       },
     },
     maxChildren: {
@@ -288,7 +288,7 @@ HomeStay.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-    }, */
+    },
     vistaVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
