@@ -50,8 +50,17 @@ app.use(
 );
 
 // In your Express app
-app.use(express.json({ limit: '1024mb' }));
-app.use(express.urlencoded({ limit: '1024mb', extended: true }));
+app.use(express.json({ limit: '10240mb' }));
+app.use(express.urlencoded({ limit: '10240mb', extended: true }));
+
+// Add response timeout settings
+app.use((req, res, next) => {
+  res.setTimeout(300000, () => { // 5 minutes timeout
+    console.error('Request timeout');
+    res.status(504).json({ error: 'Request timeout' });
+  });
+  next();
+});
 
 // Routes
 app.use("/api/v1/admins", adminRoutes);
