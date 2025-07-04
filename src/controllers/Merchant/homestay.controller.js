@@ -79,6 +79,8 @@ exports.createHomeStay = async (req, res) => {
     // Create the homestay
     const homestay = await HomeStay.create(homestayData);
 
+    console.log("Homestay created:", homestay); 
+
     // Handle image uploads
     const images = await handleImageUploads(req.files, homestay.id);
     if (images.length > 0) {
