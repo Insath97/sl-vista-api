@@ -104,7 +104,7 @@ app.get("/", (req, res) => {
 
 // Sync database and start server
 sequelize
-  .sync({ alter: true }) // Auto-create or update tables
+  .sync({ force: true }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
 
