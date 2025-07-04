@@ -60,8 +60,6 @@ exports.createHomeStay = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const t = await db.sequelize.transaction();
-
   try {
     const user = await User.findByPk(req.user.id, {
       include: [{ model: MerchantProfile, as: "merchantProfile" }],
@@ -94,34 +92,7 @@ exports.createHomeStay = async (req, res) => {
       await homestay.addAmenities(amenities);
     }
 
-    // Get associations separately
-    const [amenities1, images1] = await Promise.all([
-      homestay.getAmenities({ transaction: t }),
-      homestay.getImages({
-        order: [
-          ["isFeatured", "DESC"],
-          ["sortOrder", "ASC"],
-        ],
-        transaction: t,
-      }),
-    ]);
-
-    await t.commit();
-
-    // Manually construct response
-    const responseData = {
-      ...homestay.get({ plain: true }),
-      amenities1,
-      images1,
-    };
-
-    return res.status(201).json({
-      success: true,
-      message: "Homestay created successfully",
-      data: responseData,
-    });
-
-    /*  // Get the complete homestay with associations
+    // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
       include: [
         {
@@ -138,9 +109,9 @@ exports.createHomeStay = async (req, res) => {
           ],
         },
       ],
-    }); */
+    });
 
-    /*   console.log(newHomeStay);
+    console.log(newHomeStay);
 
     console.log("Final response data:", {
       success: true,
@@ -152,7 +123,7 @@ exports.createHomeStay = async (req, res) => {
       success: true,
       message: "Homestay created successfully",
       data: newHomeStay,
-    }); */
+    });
   } catch (error) {
     console.error("Error creating homestay:", error);
     return res.status(500).json({
