@@ -736,14 +736,7 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
       },
-      {
-        model: HomeStayImage,
-        as: "images",
-        order: [
-          ["isFeatured", "DESC"],
-          ["sortOrder", "ASC"],
-        ],
-      },
+
     ];
 
     // Additional includes for admin
