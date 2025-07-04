@@ -54,11 +54,13 @@ const verifyOwnership = async (homestayId, userId) => {
 /* ############################################################ merchant ########################################################### */
 
 /* create homestays with login merchant */
- exports.createHomeStay = async (req, res) => {
+exports.createHomeStay = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
+
+  const t = await db.sequelize.transaction();
 
   try {
     const user = await User.findByPk(req.user.id, {
@@ -92,7 +94,34 @@ const verifyOwnership = async (homestayId, userId) => {
       await homestay.addAmenities(amenities);
     }
 
-    // Get the complete homestay with associations
+    // Get associations separately
+    const [amenities1, images1] = await Promise.all([
+      homestay.getAmenities({ transaction: t }),
+      homestay.getImages({
+        order: [
+          ["isFeatured", "DESC"],
+          ["sortOrder", "ASC"],
+        ],
+        transaction: t,
+      }),
+    ]);
+
+    await t.commit();
+
+    // Manually construct response
+    const responseData = {
+      ...homestay.get({ plain: true }),
+      amenities1,
+      images1,
+    };
+
+    return res.status(201).json({
+      success: true,
+      message: "Homestay created successfully",
+      data: responseData,
+    });
+
+    /*  // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
       include: [
         {
@@ -109,9 +138,9 @@ const verifyOwnership = async (homestayId, userId) => {
           ],
         },
       ],
-    });
+    }); */
 
-    console.log(newHomeStay);
+    /*   console.log(newHomeStay);
 
     console.log("Final response data:", {
       success: true,
@@ -123,7 +152,7 @@ const verifyOwnership = async (homestayId, userId) => {
       success: true,
       message: "Homestay created successfully",
       data: newHomeStay,
-    });
+    }); */
   } catch (error) {
     console.error("Error creating homestay:", error);
     return res.status(500).json({
@@ -132,8 +161,7 @@ const verifyOwnership = async (homestayId, userId) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}; 
-
+};
 
 /* get all homestays for login merchant */
 exports.getAllHomeStays = async (req, res) => {
@@ -636,7 +664,7 @@ exports.getAllHomeStays = async (req, res) => {
 
     // Common include for both roles
     const include = [
-     /*  {
+      /*  {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
