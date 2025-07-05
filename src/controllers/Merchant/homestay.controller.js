@@ -622,11 +622,11 @@ exports.getAllHomeStays = async (req, res) => {
 
     // Common include for both roles
     const include = [
-       {
+      /*  {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
-      },
+      }, */
       {
         model: HomeStayImage,
         as: "images",
