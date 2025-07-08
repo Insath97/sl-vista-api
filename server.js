@@ -32,6 +32,7 @@ const customerRegistrationRoutes = require("./src/routes/Customer/customer.route
 const customerListRoutes = require("./src/routes/admin/customerList.routes");
 const commonRoutes = require("./src/routes/common.routes");
 const bookingRoutes = require("./src/routes/booking.routes");
+const permissionRoutes = require("./src/routes/permission.routes");
 
 const app = express();
 
@@ -81,6 +82,7 @@ app.use("/api/v1/admin/local-artists", localArtistRoutes);
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
+app.use("/api/v1/admin/permissions", permissionRoutes);
 
 // merchant routes
 app.use("/api/v1/merchants", merchantRoutes);
