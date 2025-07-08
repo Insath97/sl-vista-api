@@ -126,7 +126,7 @@ exports.getAdminById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const admin = await User.findOne({
+    /* const admin = await User.findOne({
       where: {
         id,
         accountType: "admin",
@@ -141,9 +141,23 @@ exports.getAdminById = async (req, res) => {
         },
       ],
       attributes: { exclude: ["password"] },
+    }); */
+
+    const adminuser = await AdminProfile.findOne({
+      where: {
+        id: id,
+        deletedAt: null,
+      },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: { exclude: ["password"] },
+        },
+      ],
     });
 
-    if (!admin) {
+    if (!adminuser) {
       return res.status(404).json({
         success: false,
         message: "Admin not found",
@@ -152,7 +166,7 @@ exports.getAdminById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: admin,
+      data: adminuser,
     });
   } catch (err) {
     console.error("Get admin by ID error:", err);
@@ -180,18 +194,16 @@ exports.updateAdmin = async (req, res) => {
     const { fullName, email, mobileNumber, isActive } = req.body;
 
     // Find admin user with profile
-    const admin = await User.findOne({
+    const admin = await AdminProfile.findOne({
       where: {
-        id,
-        accountType: "admin",
+        id: id,
         deletedAt: null,
       },
       include: [
         {
-          model: AdminProfile,
-          as: "adminProfile",
-          where: { deletedAt: null },
-          required: true,
+          model: User,
+          as: "user",
+          attributes: { exclude: ["password"] },
         },
       ],
     });
@@ -279,18 +291,16 @@ exports.deleteAdmin = async (req, res) => {
     const { id } = req.params;
 
     // Find admin user with profile
-    const admin = await User.findOne({
+    const admin = await AdminProfile.findOne({
       where: {
-        id,
-        accountType: "admin",
+        id: id,
         deletedAt: null,
       },
       include: [
         {
-          model: AdminProfile,
-          as: "adminProfile",
-          where: { deletedAt: null },
-          required: true,
+          model: User,
+          as: "user",
+          attributes: { exclude: ["password"] },
         },
       ],
     });

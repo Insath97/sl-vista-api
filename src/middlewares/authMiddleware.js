@@ -3,6 +3,7 @@ const { verifyToken } = require("../utils/auth");
 const User = require("../models/user.model");
 const AdminProfile = require("../models/adminProfile.model");
 const MerchantProfile = require("../models/merchantProfile.model");
+const CustomerProfile = require("../models/customerProfile.model")
 const cookies = require("../utils/cookies");
 require("dotenv").config();
 
@@ -32,7 +33,15 @@ exports.authMiddleware = async (req, res, next) => {
       const decoded = verifyToken(token);
 
       // Check if user still exists
-      const currentUser = await User.findByPk(decoded.id);
+      const currentUser = await User.findByPk(decoded.id, {
+        include: [
+          {
+            model: CustomerProfile,
+            as: "customerProfile",
+            required: false,
+          },
+        ],
+      });
       if (!currentUser) {
         return res.status(401).json({
           success: false,
@@ -134,7 +143,7 @@ exports.authMiddlewareWithProfile = (requiredRoles = []) => {
         });
       }
 
-    /*   // Role verification - check if user has at least one of the required roles
+      /*   // Role verification - check if user has at least one of the required roles
       const normalizedAccountType = user.accountType.toLowerCase();
       const normalizedRequiredRoles = requiredRoles.map((role) =>
         role.toLowerCase()

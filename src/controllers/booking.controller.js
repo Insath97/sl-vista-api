@@ -138,16 +138,18 @@ exports.getAllBookings = async (req, res) => {
 
     // Role-based filtering
     if (req.user.accountType === "merchant") {
-      // For merchants, only include bookings for their homestays
+      if (!req.user.merchantProfile || !req.user.merchantProfile.id) {
+        return res.status(400).json({
+          success: false,
+          message: "Merchant profile not found",
+        });
+      }
       include[0].include.push({
         model: MerchantProfile,
         as: "merchant",
         where: { id: req.user.merchantProfile.id },
         attributes: [],
       });
-    } else if (req.user.accountType === "customer") {
-      // For customers, only show their own bookings
-      where.customerId = req.user.customerProfile.id;
     }
 
     // Status filter (optional)
