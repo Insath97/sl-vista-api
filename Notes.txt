@@ -6,7 +6,7 @@ Admin login
 }
 
 merchant login
-
+  
 {
     "email": "merchant@example.com",
     "password": "StrongPassword123"

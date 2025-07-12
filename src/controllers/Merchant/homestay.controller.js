@@ -94,11 +94,11 @@ exports.createHomeStay = async (req, res) => {
     // Get the complete homestay with associations
     const newHomeStay = await HomeStay.findByPk(homestay.id, {
       include: [
-        /* {
+        {
           model: Amenity,
           as: "amenities",
           through: { attributes: ["isAvailable", "notes"] },
-        }, */
+        }, 
         {
           model: HomeStayImage,
           as: "images",
