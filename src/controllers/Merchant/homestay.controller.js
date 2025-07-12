@@ -388,11 +388,11 @@ exports.getAllHomeStaysForListing = async (req, res) => {
 
     const where = { /* isActive: true,  */approvalStatus: "approved" };
     const include = [
-      {
+      /* {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
-      },
+      }, */
       {
         model: HomeStayImage,
         as: "images",
