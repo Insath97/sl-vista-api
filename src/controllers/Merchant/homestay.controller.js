@@ -720,11 +720,10 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
 
   try {
     const include = [
-      /*  {
+      {
         model: Amenity,
         as: "amenities",
-        through: { attributes: ["isAvailable", "notes"] },
-      }, */
+      },
       {
         model: HomeStayImage,
         as: "images",
