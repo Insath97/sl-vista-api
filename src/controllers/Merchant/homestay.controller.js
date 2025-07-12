@@ -386,7 +386,7 @@ exports.getAllHomeStaysForListing = async (req, res) => {
       includeDeleted,
     } = req.query;
 
-    const where = { /* isActive: true, approvalStatus: "approved" */ };
+    const where = { /* isActive: true,  */approvalStatus: "approved" };
     const include = [
       {
         model: Amenity,
