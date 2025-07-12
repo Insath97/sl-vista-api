@@ -2,6 +2,9 @@ const User = require("../../models/user.model");
 const AdminProfile = require("../../models/adminProfile.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
 const CustomerProfile = require("../../models/customerProfile.model");
+const Permission = require("../../models/permisson.model");
+const Role = require("../../models/role.model");
+
 const { validationResult } = require("express-validator");
 const { setAuthCookies, clearAuthCookies } = require("../../utils/cookies");
 const {
@@ -169,7 +172,7 @@ exports.logout = (req, res) => {
   });
 };
 
-/* Single login routes */
+/* common user login */
 exports.unifiedLogin = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -179,10 +182,18 @@ exports.unifiedLogin = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Find user with password and both profile types
+    // Find user with password and all associations
     const user = await User.scope("withPassword").findOne({
       where: { email },
       include: [
+        { 
+          model: Role,
+          as: 'roles',
+          include: {
+            model: Permission,
+            as: 'permissions'
+          }
+        },
         { model: AdminProfile, as: "adminProfile", required: false },
         { model: MerchantProfile, as: "merchantProfile", required: false },
         { model: CustomerProfile, as: 'customerProfile', required: false }
@@ -198,16 +209,34 @@ exports.unifiedLogin = async (req, res) => {
     const refreshToken = generateRefreshToken(user);
     setAuthCookies(res, accessToken, refreshToken);
 
-    // Prepare response with user type
+    // Prepare permissions array
+    const permissions = [];
+    user.roles.forEach(role => {
+      role.permissions.forEach(permission => {
+        if (!permissions.includes(permission.name)) {
+          permissions.push(permission.name);
+        }
+      });
+    });
+
+    // Prepare response
     const response = {
       success: true,
       userType: user.accountType,
+      isSuperAdmin: user.isSuperAdmin,
+      permissions,
       user: {
         id: user.id,
         email: user.email,
+        accountType: user.accountType,
         ...(user.adminProfile && { adminProfile: user.adminProfile }),
         ...(user.merchantProfile && { merchantProfile: user.merchantProfile }),
         ...(user.customerProfile && { customerProfile: user.customerProfile }),
+        roles: user.roles.map(role => ({
+          id: role.id,
+          name: role.name,
+          userType: role.userType
+        }))
       },
     };
 

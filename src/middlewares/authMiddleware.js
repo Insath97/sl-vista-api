@@ -3,7 +3,7 @@ const { verifyToken } = require("../utils/auth");
 const User = require("../models/user.model");
 const AdminProfile = require("../models/adminProfile.model");
 const MerchantProfile = require("../models/merchantProfile.model");
-const CustomerProfile = require("../models/customerProfile.model")
+const CustomerProfile = require("../models/customerProfile.model");
 const cookies = require("../utils/cookies");
 require("dotenv").config();
 
@@ -16,7 +16,7 @@ exports.authMiddleware = async (req, res, next) => {
     // If no cookie token, check Authorization header
     if (!token && req.headers.authorization) {
       const authHeader = req.headers.authorization;
-      if (authHeader.startsWith("Bearer ")) {
+      if (authHeader.startsWith("Bearer ")) {        
         token = authHeader.split(" ")[1];
       }
     }

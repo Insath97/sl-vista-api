@@ -21,6 +21,12 @@ class User extends Model {
       as: "customerProfile",
       onDelete: "CASCADE",
     });
+
+    this.belongsToMany(models.Role, {
+      through: models.UserRole,
+      foreignKey: "userId",
+      as: "roles",
+    });
   }
 
   // Instance method to check password
