@@ -98,11 +98,11 @@ exports.createHomeStay = async (req, res) => {
           model: Amenity,
           as: "amenities",
           through: { attributes: ["isAvailable", "notes"] },
-        }, 
+        },
         {
           model: HomeStayImage,
           as: "images",
-        }, 
+        },
       ],
     });
 
@@ -388,10 +388,10 @@ exports.getAllHomeStaysForListing = async (req, res) => {
 
     const where = { isActive: true, approvalStatus: "approved" };
     const include = [
-     {
+      {
         model: Amenity,
         as: "amenities",
-      }, 
+      },
       {
         model: HomeStayImage,
         as: "images",
@@ -477,11 +477,10 @@ exports.getHomeStayDetails = async (req, res) => {
         approvalStatus: "approved",
       },
       include: [
-        /* {
+        {
           model: Amenity,
           as: "amenities",
-          through: { attributes: ["isAvailable", "notes"] },
-        }, */
+        },
         {
           model: HomeStayImage,
           as: "images",
@@ -722,7 +721,7 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
 
   try {
     const include = [
-    /*  {
+      /*  {
         model: Amenity,
         as: "amenities",
         through: { attributes: ["isAvailable", "notes"] },
@@ -734,7 +733,7 @@ exports.getHomeStayByIdForAdminAndMerchant = async (req, res) => {
           ["isFeatured", "DESC"],
           ["sortOrder", "ASC"],
         ],
-      }, 
+      },
     ];
 
     // Additional includes for admin
