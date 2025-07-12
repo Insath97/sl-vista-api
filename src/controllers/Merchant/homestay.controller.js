@@ -489,6 +489,18 @@ exports.getHomeStayDetails = async (req, res) => {
             ["sortOrder", "ASC"],
           ],
         },
+        {
+          model: MerchantProfile,
+          as: "merchant",
+          attributes: ["id", "businessName"],
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "email", "accountType", "isActive"],
+            },
+          ],
+        },
       ],
       paranoid: includeDeleted !== "true", // Use soft-deleted records only if requested
     });
