@@ -140,6 +140,11 @@ Room.init(
         notEmpty: true,
       },
     },
+    basePrice: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
     floor: {
       type: DataTypes.STRING(10),
       allowNull: false,
@@ -174,6 +179,11 @@ Room.init(
         ],
       },
     },
+    bedroomCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+    },
     hasAc: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -205,6 +215,57 @@ Room.init(
       defaultValue: false,
       comment: "Wheelchair accessible",
     },
+    bathroomCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+      validate: {
+        min: 0,
+      },
+    },
+    hasKitchen: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    hasLivingArea: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    hasDiningArea: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    hasWifi: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    hasMinibar: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    hasSafe: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    hasHairdryer: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    lastMaintenanceDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    nextMaintenanceDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
     viewType: {
       type: DataTypes.ENUM("Sea", "Garden", "City", "Mountain", "Pool", "None"),
       allowNull: false,
@@ -224,6 +285,47 @@ Room.init(
       allowNull: false,
       defaultValue: "Clean",
     },
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
+    availabilityStatus: {
+      type: DataTypes.ENUM(
+        "available",
+        "unavailable",
+        "maintenance",
+        "archived"
+      ),
+      allowNull: false,
+      defaultValue: "available",
+    },
+    approvalStatus: {
+      type: DataTypes.ENUM(
+        "pending",
+        "approved",
+        "rejected",
+        "changes_requested"
+      ),
+      allowNull: false,
+      defaultValue: "pending",
+    },
+    rejectionReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      validate: {
+        notEmpty: {
+          msg: "Rejection reason is required when status is rejected",
+          args: function () {
+            return this.approvalStatus === "rejected";
+          },
+        },
+      },
+    },
+    approvedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     lastCleanedAt: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -233,9 +335,61 @@ Room.init(
     sequelize,
     modelName: "Room",
     tableName: "rooms",
-    paranoid: true, // Enable soft delete
+    paranoid: true,
     defaultScope: {
       where: { isActive: true },
+    },
+    scopes: {
+      available: {
+        where: {
+          isActive: true,
+          availabilityStatus: "available",
+        },
+      },
+      withInactive: {
+        where: {},
+      },
+      forAdmin: {
+        paranoid: false,
+      },
+    },
+    hooks: {
+      beforeUpdate: (room) => {
+        // Update status change timestamp
+        if (
+          room.changed("approvalStatus") ||
+          room.changed("availabilityStatus") ||
+          room.changed("cleaningStatus")
+        ) {
+          room.lastStatusChange = new Date();
+        }
+
+        // Set approved timestamp
+        if (
+          room.changed("approvalStatus") &&
+          room.approvalStatus === "approved"
+        ) {
+          room.approvedAt = new Date();
+          room.vistaVerified = true; // Auto-verify when approved
+        }
+
+        // Auto-update maintenance dates
+        if (room.changed("maintenanceNotes")) {
+          room.lastMaintenanceDate = new Date();
+          if (room.cleaningStatus === "Maintenance") {
+            room.nextMaintenanceDate = new Date(
+              new Date().setDate(new Date().getDate() + 7)
+            );
+          }
+        }
+      },
+      afterCreate: (room) => {
+        // Set initial maintenance dates
+        room.lastMaintenanceDate = new Date();
+        room.nextMaintenanceDate = new Date(
+          new Date().setDate(new Date().getDate() + 30)
+        );
+      },
     },
   }
 );
