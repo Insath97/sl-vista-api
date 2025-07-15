@@ -3,7 +3,6 @@ const router = express.Router();
 const controller = require("../controllers/Merchant/roomType.controller");
 const validate = require("../utils/validations/roomType.validation");
 const middleware = require("../middlewares/authMiddleware");
-const { classToInvokable } = require("sequelize/lib/utils");
 
 router.use(middleware.authMiddlewareWithProfile(["admin", "merchant"]));
 

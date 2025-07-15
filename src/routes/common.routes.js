@@ -1,19 +1,25 @@
 const express = require("express");
 const router = express.Router();
 const middleware = require("../middlewares/authMiddleware");
+const propertiesController = require("../controllers/Merchant/property.controller");
 const homestaycontroller = require("../controllers/Merchant/homestay.controller");
-const uploadMiddleware = require("../middlewares/uploadMiddleware");
 const validate = require("../utils/validations/homestay.validations");
 
 router.get(
-  "/",
+  "/properties/approved-dropdown",
+  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
+  propertiesController.getApprovedPropertiesForDropdown
+);
+
+router.get(
+  "/homestays",
   middleware.authMiddlewareWithProfile(["admin", "merchant"]), // Accepts both roles
   validate.list,
   homestaycontroller.getAllHomeStays
 );
 
 router.get(
-  "/:id",
+  "/homestays/:id",
   middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   homestaycontroller.getHomeStayByIdForAdminAndMerchant
 );

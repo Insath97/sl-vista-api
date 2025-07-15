@@ -84,7 +84,7 @@ app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
 app.use("/api/v1/merchants/homestays", homestayRoutes);
 
 // common routes
-app.use("/api/v1/homestays", commonRoutes);
+app.use("/api/v1", commonRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
 
 // customer routes

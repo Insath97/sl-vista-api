@@ -1258,3 +1258,65 @@ exports.getMerchantPropertiesForDropdown = async (req, res) => {
     });
   }
 };
+
+/* Get approved properties for dropdown (admin sees all, merchant sees only theirs) */
+exports.getApprovedPropertiesForDropdown = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      include: [{ model: MerchantProfile, as: "merchantProfile" }],
+    });
+
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Base query conditions
+    const where = {
+      approvalStatus: "approved",
+      availabilityStatus: "available",
+      isActive: true,
+    };
+
+    // For merchants, only show their properties
+    if (user.accountType === "merchant" && !user.merchantProfile) {
+      return res.status(403).json({
+        success: false,
+        message: "Merchant profile not found",
+      });
+    }
+
+    if (user.accountType === "merchant") {
+      where.merchantId = user.merchantProfile.id;
+    }
+
+    const properties = await Property.findAll({
+      where,
+      attributes: ["id", "title"],
+      order: [["title", "ASC"]],
+      include: [
+        {
+          model: MerchantProfile,
+          as: "merchant",
+          attributes: ["businessName"],
+          required: true,
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: properties,
+    });
+  } catch (error) {
+    console.error("Approved properties dropdown error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch approved properties",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
