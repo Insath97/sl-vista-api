@@ -12,21 +12,16 @@ const models = require("./src/models");
 const languagesRoutes = require("./src/routes/languagesRoutes");
 const authRoutes = require("./src/routes/authRoutes");
 const adminRoutes = require("./src/routes/adminRoutes");
-const categoryRoutes = require("./src/routes/admin/category.routes");
-const subCategoryRoutes = require("./src/routes/admin/subCategory.routes");
 const merchantRoutes = require("./src/routes/Merchant/merchantAuthRoutes");
 const adminMerchantRoutes = require("./src/routes/admin/merchant.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const transportAgencyRoutes = require("./src/routes/admin/transportAgency.routes");
-const localArtistTypeRoutes = require("./src/routes/admin/localArtistType.routes");
-const localArtistRoutes = require("./src/routes/admin/localArtist.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 const adminPropertyRoutes = require("./src/routes/admin/property.routes");
 const propertyRoutes = require("./src/routes/Merchant/property.routes");
 const adminhHomestaysRoutes = require("./src/routes/admin/homestays.routes");
 const propertySettingRoutes = require("./src/routes/Merchant/propertySetting.routes");
-const unitRoutes = require("./src/routes/Merchant/unit.routes");
 const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
 const customerRegistrationRoutes = require("./src/routes/Customer/customer.routes");
 const customerListRoutes = require("./src/routes/admin/customerList.routes");
@@ -73,14 +68,10 @@ app.use("/api/v1", authRoutes);
 app.use("/api/v1/languages", languagesRoutes);
 
 // admin
-app.use("/api/v1/admin/categories", categoryRoutes);
-app.use("/api/v1/admin/subcategories", subCategoryRoutes);
 app.use("/api/v1/admin", adminMerchantRoutes);
 app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
 app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
-app.use("/api/v1/admin/local-artist-types", localArtistTypeRoutes);
-app.use("/api/v1/admin/local-artists", localArtistRoutes);
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
@@ -90,7 +81,6 @@ app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/merchants", merchantRoutes);
 app.use("/api/v1/merchants/properties", propertyRoutes);
 app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
-app.use("/api/v1/merchants/units", unitRoutes);
 app.use("/api/v1/merchants/homestays", homestayRoutes);
 
 // common routes

@@ -27,12 +27,16 @@ class Property extends Model {
       as: "propertyAmenities",
     });
 
+    this.hasMany(models.Room, {
+      foreignKey: "propertyId",
+      as: "rooms",
+    });
+
     this.hasOne(models.PropertySetting, {
       foreignKey: "propertyId",
       as: "settings",
       onDelete: "CASCADE",
     });
-
   }
 
   // Helper method to add images

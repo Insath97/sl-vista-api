@@ -16,10 +16,10 @@ class Amenity extends Model {
       as: "homestays",
     });
 
-    this.belongsToMany(models.Unit, {
-      through: models.UnitAmenity,
+    this.belongsToMany(models.Room, {
+      through: models.RoomAmenity,
       foreignKey: "amenityId",
-      as: "units",
+      as: "rooms",
     });
   }
 
