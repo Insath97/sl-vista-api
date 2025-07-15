@@ -21,10 +21,11 @@ const sequelize = new Sequelize(
 );
 
 /* Test connection */
-sequelize.authenticate()
-  .then(() => console.log('Database connected'))
-  .catch(err => console.error('Database connection error:', err));
+sequelize
+  .authenticate()
+  .then(() => console.log("Database connected"))
+  .catch((err) => console.error("Database connection error:", err));
 
-module.exports ={
-    sequelize,
-}
+module.exports = {
+  sequelize,
+};

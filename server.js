@@ -6,7 +6,7 @@ const port = process.env.PORT || 5000;
 const app_url = process.env.APP_URL + ":" + port || "http://localhost:5000";
 const { sequelize } = require("./src/config/database");
 const models = require("./src/models");
-const logger = require("./src/config/logger");
+/* const logger = require("./src/config/logger"); */
 
 /* routes import */
 const languagesRoutes = require("./src/routes/languagesRoutes");
@@ -33,6 +33,7 @@ const customerListRoutes = require("./src/routes/admin/customerList.routes");
 const commonRoutes = require("./src/routes/common.routes");
 const bookingRoutes = require("./src/routes/booking.routes");
 const permissionRoutes = require("./src/routes/permission.routes");
+const roomtypeRoutes = require("./src/routes/roomType.routes");
 
 const app = express();
 
@@ -51,14 +52,15 @@ app.use(
 );
 
 // In your Express app
-app.use(express.json({ limit: '1024mb' }));
-app.use(express.urlencoded({ limit: '1024mb', extended: true }));
+app.use(express.json({ limit: "1024mb" }));
+app.use(express.urlencoded({ limit: "1024mb", extended: true }));
 
 // Add response timeout settings
 app.use((req, res, next) => {
-  res.setTimeout(300000, () => { // 5 minutes timeout
-    console.error('Request timeout');
-    res.status(504).json({ error: 'Request timeout' });
+  res.setTimeout(300000, () => {
+    // 5 minutes timeout
+    console.error("Request timeout");
+    res.status(504).json({ error: "Request timeout" });
   });
   next();
 });
@@ -93,6 +95,7 @@ app.use("/api/v1/merchants/homestays", homestayRoutes);
 
 // common routes
 app.use("/api/v1/homestays", commonRoutes);
+app.use("/api/v1/room-type", roomtypeRoutes);
 
 // customer routes
 app.use("/api/v1/customer", customerRegistrationRoutes);
