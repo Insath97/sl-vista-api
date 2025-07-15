@@ -24,4 +24,5 @@ router.delete("/:id", validate.delete, controller.deleteRoomType);
 
 /* restore */
 router.patch("/:id/restore", validate.restore, controller.restoreRoomType);
+
 module.exports = router;
