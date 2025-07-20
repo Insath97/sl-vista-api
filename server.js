@@ -17,6 +17,7 @@ const adminMerchantRoutes = require("./src/routes/admin/merchant.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
 const transportAgencyRoutes = require("./src/routes/admin/transportAgency.routes");
+const shopping = require("./src/routes/admin/shopping.routes")
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 const adminPropertyRoutes = require("./src/routes/admin/property.routes");
 const propertyRoutes = require("./src/routes/Merchant/property.routes");
@@ -29,6 +30,7 @@ const commonRoutes = require("./src/routes/common.routes");
 const bookingRoutes = require("./src/routes/booking.routes");
 const permissionRoutes = require("./src/routes/permission.routes");
 const roomtypeRoutes = require("./src/routes/roomType.routes");
+const roomRoutes = require("./src/routes/room.routes");
 
 const app = express();
 
@@ -72,6 +74,7 @@ app.use("/api/v1/admin", adminMerchantRoutes);
 app.use("/api/v1/admin/transport-types", transportTypeRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
 app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
+app.use("/api/v1/admin/shopping",shopping);
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
@@ -86,7 +89,8 @@ app.use("/api/v1/merchants/homestays", homestayRoutes);
 // common routes
 app.use("/api/v1", commonRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
-
+/* app.use("/api/v1/rooms", roomRoutes);
+ */
 // customer routes
 app.use("/api/v1/customer", customerRegistrationRoutes);
 app.use("/api/v1/customer/list", customerHomeroutes);
@@ -99,7 +103,7 @@ app.get("/", (req, res) => {
 
 // Sync database and start server
 sequelize
-  .sync({ alter: true }) // Auto-create or update tables
+  .sync(/* { force: true } */) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
 
