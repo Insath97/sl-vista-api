@@ -63,7 +63,6 @@ exports.createLocalArtist = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -115,7 +114,6 @@ exports.getAllLocalArtists = async (req, res) => {
       {
         model: ArtistType,
         as: "artistTypes",
-        through: { attributes: [] },
       },
       {
         model: LocalArtistImage,
@@ -203,7 +201,6 @@ exports.getLocalArtistById = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -304,7 +301,6 @@ exports.updateLocalArtist = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -410,7 +406,6 @@ exports.restoreLocalArtist = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -537,7 +532,6 @@ exports.updateArtistTypes = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -593,7 +587,6 @@ exports.updateImages = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
-          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
