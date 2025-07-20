@@ -20,6 +20,7 @@ const transportAgencyRoutes = require("./src/routes/admin/transportAgency.routes
 const shopping = require("./src/routes/admin/shopping.routes");
 const foodAndBeverages = require("./src/routes/admin/foodAndBeverages.routes");
 const events = require("./src/routes/admin/events.routes");
+const activites = require("./src/routes/admin/activities.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 const adminPropertyRoutes = require("./src/routes/admin/property.routes");
 const propertyRoutes = require("./src/routes/Merchant/property.routes");
@@ -79,6 +80,7 @@ app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
 app.use("/api/v1/admin/shopping", shopping);
 app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 app.use("/api/v1/admin/events", events);
+app.use("/api/v1/admin/activities", activites);
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
