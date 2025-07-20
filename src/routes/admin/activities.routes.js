@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/activities.controller");
-const validate = require("../../utils/validations/events.validation");
+const validate = require("../../utils/validations/activities.validation");
 const authMiddleware = require("../../middlewares/authMiddleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
