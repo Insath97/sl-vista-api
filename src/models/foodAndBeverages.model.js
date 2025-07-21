@@ -150,6 +150,9 @@ FoodAndBeverage.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    status: {
+      type: DataTypes.ENUM("Active", "Pending", "Inactive"),
+    },
   },
   {
     sequelize,
