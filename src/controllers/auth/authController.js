@@ -200,6 +200,7 @@ exports.unifiedLogin = async (req, res) => {
           as: "merchantProfile",
           required: false,
           attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
+
         },
       ],
     });
