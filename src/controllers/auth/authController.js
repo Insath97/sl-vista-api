@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const User = require("../../models/user.model");
 const AdminProfile = require("../../models/adminProfile.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
@@ -199,14 +200,6 @@ exports.unifiedLogin = async (req, res) => {
           as: "merchantProfile",
           required: false,
           attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
-          include: [
-            {
-              model: Property,
-              as: "properties",
-              attributes: ["id", "name"],
-              required: false,
-            },
-          ],
         },
       ],
     });
