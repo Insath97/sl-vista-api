@@ -186,14 +186,14 @@ exports.unifiedLogin = async (req, res) => {
     const user = await User.scope("withPassword").findOne({
       where: { email },
       include: [
-        { 
+        /* { 
           model: Role,
           as: 'roles',
           include: {
             model: Permission,
             as: 'permissions'
           }
-        },
+        }, */
         { model: AdminProfile, as: "adminProfile", required: false },
         { model: MerchantProfile, as: "merchantProfile", required: false },
         { model: CustomerProfile, as: 'customerProfile', required: false }
