@@ -172,7 +172,6 @@ exports.logout = (req, res) => {
   });
 };
 
-/* common user login */
 exports.unifiedLogin = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -182,26 +181,48 @@ exports.unifiedLogin = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Find user with password and all associations
+    // Find user with password and relevant associations
     const user = await User.scope("withPassword").findOne({
-      where: { email },
+      where: {
+        email,
+        accountType: { [Op.in]: ["admin", "merchant"] }, // Only allow admin and merchant
+      },
       include: [
-        { 
-          model: Role,
-          as: 'roles',
-          include: {
-            model: Permission,
-            as: 'permissions'
-          }
+        {
+          model: AdminProfile,
+          as: "adminProfile",
+          required: false,
+          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
         },
-        { model: AdminProfile, as: "adminProfile", required: false },
-        { model: MerchantProfile, as: "merchantProfile", required: false },
-        { model: CustomerProfile, as: 'customerProfile', required: false }
+        {
+          model: MerchantProfile,
+          as: "merchantProfile",
+          required: false,
+          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
+          include: [
+            {
+              model: Property,
+              as: "properties",
+              attributes: ["id", "name"],
+              required: false,
+            },
+          ],
+        },
       ],
     });
 
     if (!user || !(await user.isPasswordMatch(password))) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is deactivated. Please contact administrator.",
+      });
     }
 
     // Generate tokens
@@ -209,39 +230,45 @@ exports.unifiedLogin = async (req, res) => {
     const refreshToken = generateRefreshToken(user);
     setAuthCookies(res, accessToken, refreshToken);
 
-    // Prepare permissions array
-    const permissions = [];
-    user.roles.forEach(role => {
-      role.permissions.forEach(permission => {
-        if (!permissions.includes(permission.name)) {
-          permissions.push(permission.name);
-        }
-      });
-    });
-
-    // Prepare response
+    // Prepare response based on account type
     const response = {
       success: true,
-      userType: user.accountType,
-      isSuperAdmin: user.isSuperAdmin,
-      permissions,
-      user: {
-        id: user.id,
-        email: user.email,
-        accountType: user.accountType,
-        ...(user.adminProfile && { adminProfile: user.adminProfile }),
-        ...(user.merchantProfile && { merchantProfile: user.merchantProfile }),
-        ...(user.customerProfile && { customerProfile: user.customerProfile }),
-        roles: user.roles.map(role => ({
-          id: role.id,
-          name: role.name,
-          userType: role.userType
-        }))
+      message: "Login successful",
+      data: {
+        userType: user.accountType,
+        user: {
+          id: user.id,
+          email: user.email,
+          accountType: user.accountType,
+          isActive: user.isActive,
+          lastLogin: new Date(),
+        },
       },
     };
 
-    res.json(response);
+    // Add profile data based on account type
+    if (user.accountType === "admin" && user.adminProfile) {
+      response.data.user.profile = {
+        ...user.adminProfile.toJSON(),
+        isSuperAdmin: user.adminProfile.isSuperAdmin || false,
+      };
+    } else if (user.accountType === "merchant" && user.merchantProfile) {
+      response.data.user.profile = {
+        ...user.merchantProfile.toJSON(),
+        properties: user.merchantProfile.properties || [],
+      };
+    }
+
+    // Update last login
+    await user.update({ lastLogin: new Date() });
+
+    res.status(200).json(response);
   } catch (error) {
-    res.status(500).json({ message: "Login failed", error: error.message });
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Login failed",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
