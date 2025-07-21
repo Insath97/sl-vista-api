@@ -173,49 +173,71 @@ exports.logout = (req, res) => {
   });
 };
 
+/* common user login */
 exports.unifiedLogin = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
     }
 
     const { email, password } = req.body;
 
-    // Find user with password and relevant associations
-    const user = await User.scope("withPassword").findOne({
-      where: {
-        email,
-        accountType: { [Op.in]: ["admin", "merchant"] }, // Only allow admin and merchant
-      },
-      include: [
-        {
-          model: AdminProfile,
-          as: "adminProfile",
-          required: false,
-          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
-        },
-        {
-          model: MerchantProfile,
-          as: "merchantProfile",
-          required: false,
-          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
-
-        },
-      ],
-    });
-
-    if (!user || !(await user.isPasswordMatch(password))) {
-      return res.status(401).json({
+    // Validate email format
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Please provide a valid email address",
       });
     }
 
+    // Validate password presence
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    // Find user with password and all associations
+    const user = await User.scope("withPassword").findOne({
+      where: { email: email.toLowerCase() },
+      include: [
+        { model: AdminProfile, as: "adminProfile", required: false },
+        { model: MerchantProfile, as: "merchantProfile", required: false },
+        { model: CustomerProfile, as: "customerProfile", required: false },
+      ],
+    });
+
+    // User not found case
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Account not found. Please check your email or register first.",
+      });
+    }
+
+    // Password mismatch case
+    const isMatch = await user.isPasswordMatch(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect password. Please try again.",
+        remainingAttempts: 4, // You can implement attempt tracking
+      });
+    }
+
+    // Account inactive case
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
-        message: "Account is deactivated. Please contact administrator.",
+        message: "Account deactivated. Please contact support.",
+        supportEmail: "support@example.com",
       });
     }
 
@@ -225,44 +247,42 @@ exports.unifiedLogin = async (req, res) => {
     setAuthCookies(res, accessToken, refreshToken);
 
     // Prepare response based on account type
+    const profileData = {};
+    if (user.accountType === "admin" && user.adminProfile) {
+      profileData.profile = user.adminProfile;
+    } else if (user.accountType === "merchant" && user.merchantProfile) {
+      profileData.profile = user.merchantProfile;
+    } else if (user.accountType === "customer" && user.customerProfile) {
+      profileData.profile = user.customerProfile;
+    }
+
+    // Successful response
     const response = {
       success: true,
       message: "Login successful",
-      data: {
-        userType: user.accountType,
-        user: {
-          id: user.id,
-          email: user.email,
-          accountType: user.accountType,
-          isActive: user.isActive,
-          lastLogin: new Date(),
-        },
+      userType: user.accountType,
+      user: {
+        id: user.id,
+        email: user.email,
+        accountType: user.accountType,
+        isActive: user.isActive,
+        ...profileData,
       },
+      accessToken,
+      refreshToken,
     };
 
-    // Add profile data based on account type
-    if (user.accountType === "admin" && user.adminProfile) {
-      response.data.user.profile = {
-        ...user.adminProfile.toJSON(),
-        isSuperAdmin: user.adminProfile.isSuperAdmin || false,
-      };
-    } else if (user.accountType === "merchant" && user.merchantProfile) {
-      response.data.user.profile = {
-        ...user.merchantProfile.toJSON(),
-        properties: user.merchantProfile.properties || [],
-      };
-    }
-
-    // Update last login
+    // Update last login timestamp
     await user.update({ lastLogin: new Date() });
 
-    res.status(200).json(response);
+    return res.status(200).json(response);
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Login failed",
+      message: "An unexpected error occurred during login",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      timestamp: new Date().toISOString(),
     });
   }
 };
