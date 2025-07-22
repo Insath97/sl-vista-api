@@ -423,71 +423,75 @@ exports.restoreAdminUser = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
 
+  const transaction = await sequelize.transaction();
   try {
     const userId = req.params.id;
 
+    // Find user including soft-deleted
     const user = await User.findOne({
       where: { id: userId, accountType: "admin" },
       paranoid: false,
+      transaction,
     });
 
     if (!user) {
+      await transaction.rollback();
       return res.status(404).json({
         success: false,
-        message: "Admin user not found (including soft-deleted)",
+        message: "Admin user not found",
       });
     }
 
     if (!user.deletedAt) {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         message: "Admin user is not deleted",
       });
     }
 
-    // Check if email is still available
-    const existingUser = await User.findOne({
+    // Check for email conflicts among active users
+    const emailConflict = await User.findOne({
       where: {
         email: user.email,
         id: { [Op.ne]: user.id },
+        deletedAt: null,
       },
+      transaction,
     });
 
-    if (existingUser) {
-      return res.status(400).json({
+    if (emailConflict) {
+      await transaction.rollback();
+      return res.status(409).json({
         success: false,
-        message: "Cannot restore admin user - email already in use",
+        message: "Cannot restore - another active user exists with this email",
       });
     }
 
-    await user.restore();
+    // Restore user and profile
+    await user.restore({ transaction });
 
-    // Also restore the admin profile if it was deleted
     const profile = await AdminProfile.findOne({
-      where: { userId: user.id },
+      where: { userId },
       paranoid: false,
+      transaction,
     });
-    if (profile && profile.deletedAt) {
-      await profile.restore();
+
+    if (profile?.deletedAt) {
+      await profile.restore({ transaction });
     }
 
+    await transaction.commit();
+
+    // Fetch restored user with associations
     const restoredUser = await User.findByPk(userId, {
       include: [
-        {
-          model: AdminProfile,
-          as: "adminProfile",
-        },
+        { model: AdminProfile, as: "adminProfile" },
         {
           model: Role,
           as: "roles",
           through: { attributes: [] },
-          include: [
-            {
-              model: Permission,
-              as: "permissions",
-              through: { attributes: [] },
-            },
-          ],
+          include: [{ model: Permission, as: "permissions" }],
         },
       ],
       attributes: { exclude: ["password"] },
@@ -499,7 +503,8 @@ exports.restoreAdminUser = async (req, res) => {
       data: restoredUser,
     });
   } catch (error) {
-    console.error("Error restoring admin user:", error);
+    await transaction.rollback();
+    console.error("Restore error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to restore admin user",

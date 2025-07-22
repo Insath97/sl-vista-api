@@ -4,13 +4,13 @@ const User = require("../../models/user.model");
 const Role = require("../../models/role.model");
 
 // Common validation rules
-const idParam = param("id")   
+const idParam = param("id")
   .isInt()
   .withMessage("Invalid ID format")
   .custom(async (value, { req }) => {
     const user = await User.findOne({
       where: { id: value, accountType: "admin" },
-      paranoid: req.query.includeDeleted === "true" ? false : true,
+      paranoid: false, // This is crucial for restore functionality
     });
     if (!user) throw new Error("Admin user not found");
     return true;
