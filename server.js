@@ -35,6 +35,7 @@ const commonRoutes = require("./src/routes/common.routes");
 const bookingRoutes = require("./src/routes/booking.routes");
 const permissionRoutes = require("./src/routes/permission.routes");
 const roleRoutes = require("./src/routes/roles.routes");
+const userRoutes = require("./src/routes/user.routes");
 const roomtypeRoutes = require("./src/routes/roomType.routes");
 const roomRoutes = require("./src/routes/room.routes");
 
@@ -91,6 +92,7 @@ app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
 app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/admin/roles", roleRoutes);
+app.use("/api/v1/admin/users", userRoutes);
 
 // merchant routes
 app.use("/api/v1/merchants", merchantRoutes);
