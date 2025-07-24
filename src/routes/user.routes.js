@@ -4,13 +4,13 @@ const middleware = require("../middlewares/authMiddleware");
 const controller = require("../controllers/user.controller");
 const validate = require("../utils/validations/user.validation");
 
-router.use(middleware.authMiddlewareWithProfile(["admin"]));
+router.use(middleware.authenticate);
 
 // create
 router.post("/", validate.create, controller.createUser);
 
 // get all
-router.get("/", validate.list, controller.getAllAdminUsers);
+router.get("/", validate.list,middleware.authorize(['users.create']), controller.getAllAdminUsers);
 
 // get by id
 router.get("/:id", validate.getById, controller.getAdminUserById);
