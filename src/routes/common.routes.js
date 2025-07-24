@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const middleware = require("../middlewares/authMiddleware");
+const middleware = require("../middlewares/auth.middleware");
 const propertiesController = require("../controllers/Merchant/property.controller");
 const homestaycontroller = require("../controllers/Merchant/homestay.controller");
 const validate = require("../utils/validations/homestay.validations");

@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/transportAgency.controller");
 const validate = require("../../utils/validations/transportAgency.validation");
-const middleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 router.use(middleware.authMiddlewareWithProfile("admin"));

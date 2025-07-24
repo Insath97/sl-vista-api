@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/events.controller");
 const validate = require("../../utils/validations/events.validation");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const authMiddleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 router.use(authMiddleware.authMiddlewareWithProfile(["admin"]));

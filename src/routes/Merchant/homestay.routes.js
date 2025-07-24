@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/Merchant/homestay.controller");
-const middleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 const validate = require("../../utils/validations/homestay.validations");
 

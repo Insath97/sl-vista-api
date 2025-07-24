@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const middleware = require("../../middlewares/authMiddleware");
+const middleware = require("../../middlewares/auth.middleware");
 const validate = require("../../utils/validations/amenity.validation");
 const amenityController = require("../../controllers/admin/amenity.controller");
 

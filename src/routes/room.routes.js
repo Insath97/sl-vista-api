@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../controllers/room.controller");
 const validate = require("../utils/validations/room.validation");
-const middleware = require("../middlewares/authMiddleware");
+const middleware = require("../middlewares/auth.middleware");
 const upload = require("../middlewares/uploadMiddleware");
 
 /* create */

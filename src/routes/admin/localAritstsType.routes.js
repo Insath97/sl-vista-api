@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const validate = require("../../utils/validations/localArtistType.validation");
 const artistTypeController = require("../../controllers/admin/localArtistsType.controller");
-const authMiddleware = require("../../middlewares/authMiddleware");
+const authMiddleware = require("../../middlewares/auth.middleware");
 
 router.use(authMiddleware.authMiddlewareWithProfile(['admin']));
 
