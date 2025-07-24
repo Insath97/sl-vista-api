@@ -6,7 +6,7 @@ const port = process.env.PORT || 5000;
 const app_url = process.env.APP_URL + ":" + port || "http://localhost:5000";
 const { sequelize } = require("./src/config/database");
 const models = require("./src/models");
-/* const logger = require("./src/config/logger"); */
+const logger = require("./src/config/logger");
 
 /* routes import */
 const languagesRoutes = require("./src/routes/languagesRoutes");

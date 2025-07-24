@@ -32,9 +32,6 @@ const validateCategory = body("category")
   .isLength({ min: 2, max: 50 })
   .withMessage("Category must be 2-50 characters");
 
-const validateUserType = body("userType")
-  .isIn(["admin", "merchant"])
-  .withMessage("User type must be either 'admin' or 'merchant'");
 
 // Query validations
 const queryValidations = [
@@ -63,14 +60,13 @@ const queryValidations = [
 
 module.exports = {
   // Create Permission
-  create: [validateCategory, validateName, validateUserType],
+  create: [validateCategory, validateName],
 
   // Update Permission
   update: [
     idParam,
     validateCategory.optional(),
     validateName.optional(),
-    validateUserType.optional(),
   ],
 
   // Get by ID

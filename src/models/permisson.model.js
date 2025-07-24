@@ -30,11 +30,6 @@ Permission.init(
       allowNull: false,
       unique: true,
     },
-    userType: {
-      type: DataTypes.ENUM("admin", "merchant"),
-      allowNull: false,
-      defaultValue: "admin",
-    },
   },
   {
     sequelize,

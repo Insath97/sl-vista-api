@@ -1,4 +1,5 @@
 const { Op } = require("sequelize");
+const { sequelize } = require("../../config/database");
 const User = require("../../models/user.model");
 const AdminProfile = require("../../models/adminProfile.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
@@ -121,7 +122,9 @@ exports.customerLogin = async (req, res) => {
   await loginUser(req, res, "customer");
 };
 
-// Refresh token
+/**
+ * Refresh token endpoint
+ */
 exports.refreshToken = async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
@@ -164,115 +167,125 @@ exports.refreshToken = async (req, res) => {
   }
 };
 
-// Logout
-exports.logout = (req, res) => {
-  clearAuthCookies(res);
-  res.status(200).json({
-    success: true,
-    message: "Logged out successfully",
-  });
-};
-
-/* common user login */
+/**
+ * Common login for admin and merchant only
+ */
 exports.unifiedLogin = async (req, res) => {
   try {
+    // 1. Validate input
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        message: "Validation failed",
         errors: errors.array(),
       });
     }
 
     const { email, password } = req.body;
 
-    // Validate email format
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
-      });
-    }
-
-    // Validate password presence
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: "Password is required",
-      });
-    }
-
-    // Find user with password and all associations
+    // 2. Find user (case-sensitive exact match)
     const user = await User.scope("withPassword").findOne({
-      where: { email: email.toLowerCase() },
+      where: {
+        [Op.and]: [
+          sequelize.where(
+            sequelize.fn("LOWER", sequelize.col("email")),
+            email.toLowerCase()
+          ),
+          { accountType: { [Op.in]: ["admin", "merchant"] } },
+        ],
+      },
       include: [
-        { model: AdminProfile, as: "adminProfile", required: false },
-        { model: MerchantProfile, as: "merchantProfile", required: false },
-        { model: CustomerProfile, as: "customerProfile", required: false },
+        {
+          model: AdminProfile,
+          as: "adminProfile",
+          required: false,
+          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
+        },
+        {
+          model: MerchantProfile,
+          as: "merchantProfile",
+          required: false,
+          attributes: { exclude: ["createdAt", "updatedAt", "deletedAt"] },
+        },
       ],
     });
 
-    // User not found case
+    // 3. Check if user exists
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          "Account not found. Please check your email or register first.",
+        message: "Account not found, Please check your email",
       });
     }
 
-    // Password mismatch case
-    const isMatch = await user.isPasswordMatch(password);
-    if (!isMatch) {
+    // 4. Verify password
+    if (!(await user.isPasswordMatch(password))) {
       return res.status(401).json({
         success: false,
-        message: "Incorrect password. Please try again.",
-        remainingAttempts: 4, // You can implement attempt tracking
+        message: "Incorrect password",
       });
     }
 
-    // Account inactive case
+    // 5. Check account status
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
-        message: "Account deactivated. Please contact support.",
-        supportEmail: "support@example.com",
+        message: "Account deactivated",
       });
     }
 
-    // Generate tokens
+    // 6. Merchant-specific check
+    if (
+      user.accountType === "merchant" &&
+      (!user.merchantProfile || user.merchantProfile.status !== "active")
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Merchant account not active",
+      });
+    }
+
+    // 7. Get basic roles (if any exist)
+    const roles = await user.getRoles({
+      attributes: ["id", "name", "description"],
+      include: [
+        {
+          model: Permission,
+          as: "permissions",
+          attributes: ["id", "name", "category"],
+          through: { attributes: [] },
+        },
+      ],
+      joinTableAttributes: [],
+      required: false, // Important for users without roles
+    });
+
+    // 8. Generate tokens
     const accessToken = generateToken(user);
     const refreshToken = generateRefreshToken(user);
     setAuthCookies(res, accessToken, refreshToken);
 
-    // Prepare response based on account type
-    const profileData = {};
-    if (user.accountType === "admin" && user.adminProfile) {
-      profileData.profile = user.adminProfile;
-    } else if (user.accountType === "merchant" && user.merchantProfile) {
-      profileData.profile = user.merchantProfile;
-    } else if (user.accountType === "customer" && user.customerProfile) {
-      profileData.profile = user.customerProfile;
-    }
-
-    // Successful response
+    // 9. Prepare response
     const response = {
       success: true,
       message: "Login successful",
-      userType: user.accountType,
       user: {
         id: user.id,
         email: user.email,
         accountType: user.accountType,
-        isActive: user.isActive,
-        ...profileData,
+        profile:
+          user.accountType === "admin"
+            ? user.adminProfile
+            : user.merchantProfile,
+        roles: roles || [], // Empty array if no roles
       },
-      accessToken,
-      refreshToken,
+      tokens: {
+        accessToken,
+        refreshToken,
+      },
     };
 
-    // Update last login timestamp
+    // 10. Update last login
     await user.update({ lastLogin: new Date() });
 
     return res.status(200).json(response);
@@ -280,9 +293,20 @@ exports.unifiedLogin = async (req, res) => {
     console.error("Login error:", error);
     return res.status(500).json({
       success: false,
-      message: "An unexpected error occurred during login",
+      message: "Login failed",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
-      timestamp: new Date().toISOString(),
     });
   }
+};
+
+/**
+ * Logout endpoint
+ */
+exports.logout = (req, res) => {
+  res.clearCookie("accessToken");
+  res.clearCookie("refreshToken");
+  return res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
 };

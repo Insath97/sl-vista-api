@@ -16,7 +16,6 @@ exports.getAllPermissions = async (req, res) => {
 
     const where = {};
     if (category) where.category = category;
-    if (userType) where.userType = userType;
     if (search) {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -98,12 +97,11 @@ exports.createPermission = async (req, res) => {
   }
 
   try {
-    const { category, name, userType } = req.body;
+    const { category, name } = req.body;
 
     const permission = await Permission.create({
       category,
       name,
-      userType,
     });
 
     return res.status(201).json({
@@ -139,7 +137,7 @@ exports.updatePermission = async (req, res) => {
       });
     }
 
-    const { category, name, userType } = req.body;
+    const { category, name } = req.body;
 
     await permission.update({
       category,

@@ -2,9 +2,10 @@ const { body } = require("express-validator");
 
 exports.loginValidation = [
   body("email")
+    .notEmpty()
+    .withMessage("Email is required")
     .isEmail()
-    .withMessage("Please provide a valid email")
-    .normalizeEmail(),
+    .withMessage("Please provide a valid email"),
 
   body("password")
     .notEmpty()
