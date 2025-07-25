@@ -12,7 +12,7 @@ const logger = require("./src/config/logger");
 const languagesRoutes = require("./src/routes/languagesRoutes");
 const authRoutes = require("./src/routes/authRoutes");
 const adminRoutes = require("./src/routes/adminRoutes");
-const merchantRoutes = require("./src/routes/Merchant/merchantAuthRoutes");
+/* const merchantRoutes = require("./src/routes/Merchant/merchantAuthRoutes"); */
 const adminMerchantRoutes = require("./src/routes/admin/merchant.routes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
 const transportTypeRoutes = require("./src/routes/admin/transportType.routes");
@@ -38,6 +38,8 @@ const roleRoutes = require("./src/routes/roles.routes");
 const userRoutes = require("./src/routes/user.routes");
 const roomtypeRoutes = require("./src/routes/roomType.routes");
 const roomRoutes = require("./src/routes/room.routes");
+
+const merchantRoutes = require("./src/routes/merchant.routes");
 
 const app = express();
 
@@ -72,21 +74,9 @@ app.use((req, res, next) => {
 // Routes
 app.use("/api/v1/admins", adminRoutes);
 
-// common and general routes
-app.use("/api/v1", authRoutes);
-app.use("/api/v1/languages", languagesRoutes);
-
 // admin
 app.use("/api/v1/admin", adminMerchantRoutes);
-app.use("/api/v1/admin/transport-types", transportTypeRoutes);
-app.use("/api/v1/admin/amenities", amenityRoutes);
-app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
-app.use("/api/v1/admin/shopping", shopping);
-app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
-app.use("/api/v1/admin/events", events);
-app.use("/api/v1/admin/activities", activites);
-app.use("/api/v1/admin/local-artists", localArtistRoutes);
-app.use("/api/v1/admin/local-artists-type", localArtistsType);
+
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
@@ -95,7 +85,7 @@ app.use("/api/v1/admin/roles", roleRoutes);
 app.use("/api/v1/admin/users", userRoutes);
 
 // merchant routes
-app.use("/api/v1/merchants", merchantRoutes);
+/* app.use("/api/v1/merchants", merchantRoutes); */
 app.use("/api/v1/merchants/properties", propertyRoutes);
 app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
 app.use("/api/v1/merchants/homestays", homestayRoutes);
@@ -103,9 +93,27 @@ app.use("/api/v1/merchants/homestays", homestayRoutes);
 // common routes
 app.use("/api/v1", commonRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
-/* app.use("/api/v1/rooms", roomRoutes);
- */
-// customer routes
+/* app.use("/api/v1/rooms", roomRoutes); */
+
+/* auth */
+app.use("/api/v1/auth", authRoutes);
+
+/* merchant registration and other admin level routes */
+app.use("/api/v1/", merchantRoutes);
+
+/* second listing */
+app.use("/api/v1/languages", languagesRoutes);
+app.use("/api/v1/admin/amenities", amenityRoutes);
+app.use("/api/v1/admin/transport-types", transportTypeRoutes);
+app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
+app.use("/api/v1/admin/shopping", shopping);
+app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
+app.use("/api/v1/admin/events", events);
+app.use("/api/v1/admin/activities", activites);
+app.use("/api/v1/admin/local-artists", localArtistRoutes);
+app.use("/api/v1/admin/local-artists-type", localArtistsType);
+
+/* customer routes */
 app.use("/api/v1/customer", customerRegistrationRoutes);
 app.use("/api/v1/customer/list", customerHomeroutes);
 app.use("/api/v1/booking", bookingRoutes);
@@ -117,8 +125,8 @@ app.get("/", (req, res) => {
 
 // Sync database and start server
 sequelize
-  .sync({/* 
-    alter: true, */
+  .sync({
+    alter: true,
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");

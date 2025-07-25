@@ -418,3 +418,54 @@ exports.restoreRole = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get all admin roles (ID and name only)
+ */
+exports.listAdminRoles = async (req, res) => {
+  try {
+    const roles = await Role.findAll({
+      where: {
+        userType: "admin",
+        isSystem: false, // Exclude system roles if needed
+      },
+      attributes: ["id", "name"], // Only get ID and name
+      order: [["name", "ASC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: roles,
+    });
+  } catch (error) {
+    console.error("Error fetching admin roles:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch admin roles",
+    });
+  }
+};
+
+/**
+ * Get all merchant roles (ID and name only)
+ */
+exports.listMerchantRoles = async (req, res) => {
+  try {
+    const roles = await Role.findAll({
+      where: { userType: "merchant" },
+      attributes: ["id", "name"], // Only get ID and name
+      order: [["name", "ASC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: roles,
+    });
+  } catch (error) {
+    console.error("Error fetching merchant roles:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch merchant roles",
+    });
+  }
+};

@@ -15,7 +15,7 @@ class MerchantProfile extends Model {
       onDelete: "CASCADE",
     });
 
-     this.hasMany(models.HomeStay, {
+    this.hasMany(models.HomeStay, {
       foreignKey: "merchantId",
       as: "homestays",
       onDelete: "CASCADE",
@@ -39,6 +39,14 @@ MerchantProfile.init(
         key: "id",
       },
     },
+    merchantName: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: {
+        notEmpty: true,
+        len: [2, 100],
+      },
+    },
     businessName: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -50,23 +58,18 @@ MerchantProfile.init(
     businessRegistrationNumber: {
       type: DataTypes.STRING(50),
       allowNull: false,
-    /*   unique: true, */
       validate: {
         notEmpty: true,
       },
     },
     businessType: {
-      type: DataTypes.ENUM(
-        "hotel",
-        "homestay",
-        "appartment",
-        "tour_operator",
-        "transport",
-        "activity_provider",
-        "restaurant",
-        "other"
-      ),
+      type: DataTypes.ENUM("hotel_and_appartment", "homestay", "both", "other"),
       allowNull: false,
+    },
+    allowedPropertyTypes: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
     },
     businessDescription: {
       type: DataTypes.TEXT,
@@ -81,14 +84,13 @@ MerchantProfile.init(
       type: DataTypes.STRING(20),
       allowNull: function () {
         return !this.isSriLankan;
-      }, // Required only for Sri Lankans
+      },
       validate: {
         isSriLankanNic: function (value) {
           if (this.isSriLankan && !value) {
             throw new Error("NIC is required for Sri Lankan citizens");
           }
           if (value && this.isSriLankan) {
-            // Validate Sri Lankan NIC format (old 10-digit or new 12-digit)
             const nicRegex = /^([0-9]{9}[vVxX]|[0-9]{12})$/;
             if (!nicRegex.test(value)) {
               throw new Error(
@@ -103,7 +105,7 @@ MerchantProfile.init(
       type: DataTypes.STRING(50),
       allowNull: function () {
         return this.isSriLankan;
-      }, // Required only for foreigners
+      },
       validate: {
         isPassportNumber: function (value) {
           if (!this.isSriLankan && !value) {
@@ -134,11 +136,11 @@ MerchantProfile.init(
     },
     status: {
       type: DataTypes.ENUM(
-        "pending", // New registration, limited privileges
-        "active", // Fully verified and approved
-        "inactive", // Temporarily disabled by merchant
-        "suspended", // Admin suspended due to violations
-        "rejected" // Registration rejected
+        "pending",
+        "active",
+        "inactive",
+        "suspended",
+        "rejected"
       ),
       allowNull: false,
       defaultValue: "pending",
@@ -159,6 +161,14 @@ MerchantProfile.init(
     suspensionReason: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    adminNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
     },
   },
   {
@@ -182,6 +192,9 @@ MerchantProfile.init(
       },
       {
         fields: ["status"],
+      },
+      {
+        fields: ["businessName"],
       },
     ],
   }
