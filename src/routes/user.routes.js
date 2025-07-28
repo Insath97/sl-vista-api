@@ -10,7 +10,7 @@ router.use(middleware.authenticate);
 router.post("/", validate.create, controller.createUser);
 
 // get all
-router.get("/", validate.list,middleware.authorize(['users.create']), controller.getAllAdminUsers);
+router.get("/", validate.list,/* middleware.authorize(['users.create']), */ controller.getAllAdminUsers);
 
 // get by id
 router.get("/:id", validate.getById, controller.getAdminUserById);
