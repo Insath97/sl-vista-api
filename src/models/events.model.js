@@ -160,6 +160,11 @@ Events.init(
         isUrl: { msg: "Invalid website URL" },
       },
     },
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

@@ -146,6 +146,11 @@ FoodAndBeverage.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

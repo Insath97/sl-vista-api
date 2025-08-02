@@ -390,6 +390,20 @@ module.exports = {
     ...propertyValidations,
     ...amenityValidations,
     ...imageValidations,
+    body("merchantId")
+      .if((value, { req }) => {
+        // Only validate merchantId if user is admin
+        return req.user && req.user.accountType === "admin";
+      })
+      .notEmpty()
+      .withMessage("merchantId is required when creating as admin")
+      .isInt()
+      .withMessage("merchantId must be an integer")
+      .custom(async (value) => {
+        const merchant = await MerchantProfile.findByPk(value);
+        if (!merchant) throw new Error("Merchant profile not found");
+        return true;
+      }),
   ],
 
   // List Properties

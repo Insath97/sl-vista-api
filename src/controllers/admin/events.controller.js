@@ -58,7 +58,6 @@ exports.createEvent = async (req, res) => {
         {
           model: EventsImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],

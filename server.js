@@ -23,7 +23,7 @@ const localArtistsType = require("./src/routes/admin/localAritstsType.routes");
 const localArtistRoutes = require("./src/routes/admin/localArtists.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
 const adminPropertyRoutes = require("./src/routes/admin/property.routes");
-const propertyRoutes = require("./src/routes/Merchant/property.routes");
+/* const propertyRoutes = require("./src/routes/Merchant/property.routes"); */
 const adminhHomestaysRoutes = require("./src/routes/admin/homestays.routes");
 const propertySettingRoutes = require("./src/routes/Merchant/propertySetting.routes");
 const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
@@ -38,6 +38,7 @@ const roomtypeRoutes = require("./src/routes/roomType.routes");
 const roomRoutes = require("./src/routes/room.routes");
 
 const merchantRoutes = require("./src/routes/merchant.routes");
+const propertyRoutes = require("./src/routes/property.routes");
 
 const app = express();
 
@@ -96,6 +97,7 @@ app.use("/api/v1/auth", authRoutes);
 
 /* merchant registration and other admin level routes */
 app.use("/api/v1/", merchantRoutes);
+app.use("/api/v1/properties", propertyRoutes);
 
 /* second listing */
 app.use("/api/v1/languages", languagesRoutes);
@@ -122,7 +124,7 @@ app.get("/", (req, res) => {
 // Sync database and start server
 sequelize
   .sync({
-/*     alter: true, */
+    alter: true,
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
