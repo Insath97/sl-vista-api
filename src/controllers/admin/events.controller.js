@@ -25,7 +25,7 @@ const handleEventImageUploads = async (files, eventId) => {
   }));
 };
 
-// 🚀 Create Event Controller
+// Create Event Controller
 exports.createEvent = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -79,7 +79,6 @@ exports.createEvent = async (req, res) => {
 };
 
 //Get all Events
-
 exports.getAllEvents = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -99,7 +98,13 @@ exports.getAllEvents = async (req, res) => {
 
     const offset = (page - 1) * limit;
     const where = {};
-    const include = [];
+    const include = [
+      {
+        model: EventsImages,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      },
+    ];
 
     if (isActive === "true") where.isActive = true;
     else if (isActive === "false") where.isActive = false;
@@ -110,14 +115,6 @@ exports.getAllEvents = async (req, res) => {
 
     if (city) where.city = city;
     if (province) where.province = province;
-
-    if (includeImages === "true") {
-      include.push({
-        model: EventsImages,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
-    }
 
     const result = await Events.findAndCountAll({
       where,
@@ -150,7 +147,6 @@ exports.getAllEvents = async (req, res) => {
 };
 
 //Get by id
-
 exports.getEventById = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -195,7 +191,6 @@ exports.getEventById = async (req, res) => {
 };
 
 //update Events
-
 exports.updateEvent = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -270,7 +265,6 @@ exports.updateEvent = async (req, res) => {
 };
 
 //Delete events
-
 exports.deleteEvent = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -315,7 +309,6 @@ exports.deleteEvent = async (req, res) => {
 };
 
 //Restore soft-delete events
-
 exports.restoreEvent = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
