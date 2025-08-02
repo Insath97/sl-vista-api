@@ -54,7 +54,6 @@ exports.createFoodAndBeverage = async (req, res) => {
         {
           model: FoodAndBeveragesImage,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -96,7 +95,13 @@ exports.getAllFoodAndBeverages = async (req, res) => {
 
     const offset = (page - 1) * limit;
     const where = {};
-    const include = [];
+    const include = [
+      {
+        model: FoodAndBeveragesImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      },
+    ];
 
     if (isActive === "true") where.isActive = true;
     else if (isActive === "false") where.isActive = false;
@@ -109,13 +114,6 @@ exports.getAllFoodAndBeverages = async (req, res) => {
     if (province) where.province = province;
     if (cuisineType) where.cuisineType = cuisineType;
 
-    if (includeImages === "true") {
-      include.push({
-        model: FoodAndBeveragesImage,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
-    }
 
     const result = await FoodAndBeverage.findAndCountAll({
       where,
@@ -209,7 +207,10 @@ exports.updateFoodAndBeverage = async (req, res) => {
     const { images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    const uploadedImages = await handleFoodAndBeverageImageUploads(req.files, foodItem.id);
+    const uploadedImages = await handleFoodAndBeverageImageUploads(
+      req.files,
+      foodItem.id
+    );
     newImages = [...uploadedImages];
 
     if (bodyImages?.length) {
@@ -457,7 +458,10 @@ exports.updateImages = async (req, res) => {
       });
     }
 
-    const images = await handleFoodAndBeverageImageUploads(req.files, foodItem.id);
+    const images = await handleFoodAndBeverageImageUploads(
+      req.files,
+      foodItem.id
+    );
 
     if (images.length > 0) {
       await FoodAndBeveragesImage.destroy({
