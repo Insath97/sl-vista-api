@@ -54,6 +54,7 @@ exports.createFoodAndBeverage = async (req, res) => {
         {
           model: FoodAndBeveragesImage,
           as: "images",
+          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
