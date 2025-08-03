@@ -19,6 +19,7 @@ const shopping = require("./src/routes/admin/shopping.routes");
 const foodAndBeverages = require("./src/routes/admin/foodAndBeverages.routes");
 const events = require("./src/routes/admin/events.routes");
 const activites = require("./src/routes/admin/activities.routes");
+const guidesRoutes = require("./src/routes/admin/guides.routes");
 const localArtistsType = require("./src/routes/admin/localAritstsType.routes");
 const localArtistRoutes = require("./src/routes/admin/localArtists.routes");
 const customerHomeroutes = require("./src/routes/Customer/home.routes");
@@ -110,6 +111,7 @@ app.use("/api/v1/admin/events", events);
 app.use("/api/v1/admin/activities", activites);
 app.use("/api/v1/admin/local-artists", localArtistRoutes);
 app.use("/api/v1/admin/local-artists-type", localArtistsType);
+app.use("/api/v1/admin/guides", guidesRoutes);
 
 /* customer routes */
 app.use("/api/v1/customer", customerRegistrationRoutes);
