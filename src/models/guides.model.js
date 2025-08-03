@@ -212,7 +212,7 @@ Guides.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: { },
     },
     hooks: {
       beforeValidate: (guide) => {

@@ -16,4 +16,22 @@ router.get("/", validate.list, controller.getAllGuides);
 /* get by id */
 router.get("/:id", validate.getById, controller.getGuideById);
 
+/* update  */
+
+/* delete */
+router.delete("/:id", validate.delete, controller.deleteGuide);
+
+/* restore */
+router.patch("/restore/:id", controller.restoreGuide);
+
+/* active status */
+router.patch(
+  "/status/:id",
+  validate.toggleStatus,
+  controller.toggleActiveStatus
+);
+
+/* vista verified status */
+router.patch("/verify/:id", validate.verify, controller.verifyGuide);
+
 module.exports = router;
