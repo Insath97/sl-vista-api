@@ -1,12 +1,11 @@
+const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
-const slugify = require("slugify");
+const UploadService = require("../../helpers/upload");
 const FoodAndBeverage = require("../../models/foodAndBeverages.model");
 const FoodAndBeveragesImage = require("../../models/FoodAndBeverageImages.model");
-const UploadService = require("../../helpers/upload");
-const { Op } = require("sequelize");
 
 // Helper function to handle image uploads
-const handleFoodAndBeverageImageUploads = async (files, foodAndBeverageId) => {
+const handleImageUploads = async (files, foodAndBeverageId) => {
   if (!files || !files.images || files.images.length === 0) return [];
 
   const uploadPromises = files.images.map((file) =>
@@ -14,56 +13,51 @@ const handleFoodAndBeverageImageUploads = async (files, foodAndBeverageId) => {
   );
 
   const uploadedFiles = await Promise.all(uploadPromises);
-
   return uploadedFiles.map((file) => ({
     foodAndBeverageId,
     imageUrl: file.url,
     s3Key: file.key,
     fileName: file.fileName,
     size: file.size,
-    mimetype: file.mimetype,
   }));
 };
 
-// Create foodAndBeverages with images
+/* Create food and beverage with images */
 exports.createFoodAndBeverage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const { ...foodData } = req.body;
+    const foodAndBeverageData = req.body;
 
-    if (!foodData.slug && foodData.name) {
-      foodData.slug = slugify(foodData.name, {
-        lower: true,
-        strict: true,
-        remove: /[*+~.()'"!:@]/g,
-      });
-    }
+    const foodAndBeverage = await FoodAndBeverage.create(foodAndBeverageData);
 
-    const food = await FoodAndBeverage.create(foodData);
-
-    const images = await handleFoodAndBeverageImageUploads(req.files, food.id);
+    // Handle image uploads
+    const images = await handleImageUploads(req.files, foodAndBeverage.id);
     if (images.length > 0) {
-      await FoodAndBeveragesImage.bulkCreate(images);
+      await foodAndBeverage.addImages(images);
     }
 
-    const fullFood = await FoodAndBeverage.findByPk(food.id, {
-      include: [
-        {
-          model: FoodAndBeveragesImage,
-          as: "images",
-          separate: true,
-          order: [["sortOrder", "ASC"]],
-        },
-      ],
-    });
+    // Fetch with associations
+    const foodAndBeverageWithAssociations = await FoodAndBeverage.findByPk(
+      foodAndBeverage.id,
+      {
+        include: [
+          {
+            model: FoodAndBeveragesImage,
+            as: "images",
+            order: [["sortOrder", "ASC"]],
+          },
+        ],
+      }
+    );
 
     return res.status(201).json({
       success: true,
-      message: "Food & Beverage item created successfully",
-      data: fullFood,
+      message: "Food and beverage created successfully",
+      data: foodAndBeverageWithAssociations,
     });
   } catch (error) {
     console.error("Error creating food and beverage:", error);
@@ -75,26 +69,26 @@ exports.createFoodAndBeverage = async (req, res) => {
   }
 };
 
-// Get all FoodAndBeverages
+/* Get all food and beverages */
 exports.getAllFoodAndBeverages = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const {
       isActive,
+      vistaVerified,
       includeDeleted,
-      includeImages,
+      page = 1,
+      limit = 10,
       search,
       city,
       province,
       cuisineType,
-      page = 1,
-      limit = 10,
     } = req.query;
 
-    const offset = (page - 1) * limit;
     const where = {};
     const include = [
       {
@@ -104,36 +98,42 @@ exports.getAllFoodAndBeverages = async (req, res) => {
       },
     ];
 
-    if (isActive === "true") where.isActive = true;
-    else if (isActive === "false") where.isActive = false;
-
-    if (search) {
-      where.name = { [Op.like]: `%${search}%` };
-    }
-
+    // Filter conditions
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
     if (city) where.city = city;
     if (province) where.province = province;
     if (cuisineType) where.cuisineType = cuisineType;
 
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
 
-    const result = await FoodAndBeverage.findAndCountAll({
+    const options = {
       where,
       include,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      paranoid: includeDeleted !== "true", // soft delete toggle
+      distinct: true,
       order: [["createdAt", "DESC"]],
-    });
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: foodAndBeverages } =
+      await FoodAndBeverage.findAndCountAll(options);
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverages fetched successfully",
-      data: result.rows,
+      data: foodAndBeverages,
       pagination: {
-        total: result.count,
+        total: count,
         page: parseInt(page),
-        pageSize: parseInt(limit),
-        totalPages: Math.ceil(result.count / limit),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
       },
     });
   } catch (error) {
@@ -146,15 +146,15 @@ exports.getAllFoodAndBeverages = async (req, res) => {
   }
 };
 
-// Get Food and Beverage By ID
+/* Get food and beverage by ID */
 exports.getFoodAndBeverageById = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const { includeDeleted } = req.query;
-
     const options = {
       where: { id: req.params.id },
       include: [
@@ -167,18 +167,18 @@ exports.getFoodAndBeverageById = async (req, res) => {
       paranoid: includeDeleted !== "true",
     };
 
-    const foodItem = await FoodAndBeverage.findOne(options);
+    const foodAndBeverage = await FoodAndBeverage.findOne(options);
 
-    if (!foodItem) {
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: foodItem,
+      data: foodAndBeverage,
     });
   } catch (error) {
     console.error("Error fetching food and beverage:", error);
@@ -190,76 +190,68 @@ exports.getFoodAndBeverageById = async (req, res) => {
   }
 };
 
-// Update Food And Beverages
+/* Update food and beverage */
 exports.updateFoodAndBeverage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findByPk(req.params.id);
-    if (!foodItem) {
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id);
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
     const { images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    const uploadedImages = await handleFoodAndBeverageImageUploads(
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(
       req.files,
-      foodItem.id
+      foodAndBeverage.id
     );
     newImages = [...uploadedImages];
 
+    // Handle body images
     if (bodyImages?.length) {
       newImages = [
         ...newImages,
         ...bodyImages.map((img) => ({
           ...img,
           s3Key: img.s3Key || null,
-          foodAndBeverageId: foodItem.id,
         })),
       ];
     }
 
-    if (
-      updateData.name &&
-      !updateData.slug &&
-      updateData.name !== foodItem.name
-    ) {
-      updateData.slug = slugify(updateData.name, {
-        lower: true,
-        strict: true,
-        remove: /[*+~.()'"!:@]/g,
-      });
-    }
-
-    await foodItem.update(updateData);
-
+    // Update images
     if (newImages.length > 0) {
-      await FoodAndBeveragesImage.destroy({
-        where: { foodAndBeverageId: foodItem.id },
-      });
-      await FoodAndBeveragesImage.bulkCreate(newImages);
+      await foodAndBeverage.updateImages(newImages);
     }
 
-    const updatedFoodItem = await FoodAndBeverage.findByPk(foodItem.id, {
-      include: [
-        {
-          model: FoodAndBeveragesImage,
-          as: "images",
-          order: [["sortOrder", "ASC"]],
-        },
-      ],
-    });
+    await foodAndBeverage.update(updateData);
+
+    // Fetch updated food and beverage
+    const updatedFoodAndBeverage = await FoodAndBeverage.findByPk(
+      foodAndBeverage.id,
+      {
+        include: [
+          {
+            model: FoodAndBeveragesImage,
+            as: "images",
+            order: [["sortOrder", "ASC"]],
+          },
+        ],
+      }
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage item updated successfully",
-      data: updatedFoodItem,
+      message: "Food and beverage updated successfully",
+      data: updatedFoodAndBeverage,
     });
   } catch (error) {
     console.error("Error updating food and beverage:", error);
@@ -271,26 +263,31 @@ exports.updateFoodAndBeverage = async (req, res) => {
   }
 };
 
-// Delete Food And Beverages
+/* Delete food and beverage */
 exports.deleteFoodAndBeverage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findByPk(req.params.id, {
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id, {
       include: [{ model: FoodAndBeveragesImage, as: "images" }],
     });
 
-    if (!foodItem) {
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
-    const s3Keys = foodItem.images.map((img) => img.s3Key).filter(Boolean);
+    // Get all S3 keys from images
+    const s3Keys = foodAndBeverage.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
 
+    // Delete all associated images from S3
     if (s3Keys.length > 0) {
       if (s3Keys.length === 1) {
         await UploadService.deleteFile(s3Keys[0]);
@@ -299,11 +296,11 @@ exports.deleteFoodAndBeverage = async (req, res) => {
       }
     }
 
-    await foodItem.destroy();
+    await foodAndBeverage.destroy();
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage item deleted successfully",
+      message: "Food and beverage deleted successfully",
     });
   } catch (error) {
     console.error("Error deleting food and beverage:", error);
@@ -315,48 +312,52 @@ exports.deleteFoodAndBeverage = async (req, res) => {
   }
 };
 
-// Restore soft-deleted Food And Beverages
+/* Restore soft-deleted food and beverage */
 exports.restoreFoodAndBeverage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findOne({
+    const foodAndBeverage = await FoodAndBeverage.findOne({
       where: { id: req.params.id },
       paranoid: false,
     });
 
-    if (!foodItem) {
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found (including soft-deleted)",
+        message: "Food and beverage not found (including soft-deleted)",
       });
     }
 
-    if (!foodItem.deletedAt) {
+    if (!foodAndBeverage.deletedAt) {
       return res.status(400).json({
         success: false,
-        message: "Food and Beverage item is not deleted",
+        message: "Food and beverage is not deleted",
       });
     }
 
-    await foodItem.restore();
+    await foodAndBeverage.restore();
 
-    const restoredItem = await FoodAndBeverage.findByPk(req.params.id, {
-      include: [
-        {
-          model: FoodAndBeveragesImage,
-          as: "images",
-          order: [["sortOrder", "ASC"]],
-        },
-      ],
-    });
+    const restoredFoodAndBeverage = await FoodAndBeverage.findByPk(
+      req.params.id,
+      {
+        include: [
+          {
+            model: FoodAndBeveragesImage,
+            as: "images",
+            order: [["sortOrder", "ASC"]],
+          },
+        ],
+      }
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage item restored successfully",
-      data: restoredItem,
+      message: "Food and beverage restored successfully",
+      data: restoredFoodAndBeverage,
     });
   } catch (error) {
     console.error("Error restoring food and beverage:", error);
@@ -368,30 +369,35 @@ exports.restoreFoodAndBeverage = async (req, res) => {
   }
 };
 
-// Toggle Food And Beverages Active status
+/* Toggle food and beverage active status */
 exports.toggleActiveStatus = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findByPk(req.params.id);
-    if (!foodItem) {
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id);
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
-    const newStatus = !foodItem.isActive;
-    await foodItem.update({ isActive: newStatus });
+     const newActiveStatus =
+      req.body.active !== undefined
+        ? req.body.active
+        : !foodAndBeverage.isActive;
+
+    await foodAndBeverage.update({ isActive: newActiveStatus });
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage status toggled successfully",
+      message: "Food and beverage status toggled successfully",
       data: {
-        id: foodItem.id,
-        isActive: newStatus,
+        id: foodAndBeverage.id,
+        isActive: !foodAndBeverage.isActive,
       },
     });
   } catch (error) {
@@ -404,33 +410,34 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 };
 
-// Verify Food And Beverages
+/* Verify food and beverage */
 exports.verifyFoodAndBeverage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findByPk(req.params.id);
-    if (!foodItem) {
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id);
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
     const newVerifiedStatus =
       req.body.verified !== undefined
         ? req.body.verified
-        : !foodItem.vistaVerified;
+        : !foodAndBeverage.vistaVerified;
 
-    await foodItem.update({ vistaVerified: newVerifiedStatus });
+    await foodAndBeverage.update({ vistaVerified: newVerifiedStatus });
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage verification status updated",
+      message: "Food and beverage verification status updated",
       data: {
-        id: foodItem.id,
+        id: foodAndBeverage.id,
         vistaVerified: newVerifiedStatus,
       },
     });
@@ -444,47 +451,46 @@ exports.verifyFoodAndBeverage = async (req, res) => {
   }
 };
 
-// Update Food And Beverage Images
+/* Update food and beverage images */
 exports.updateImages = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const foodItem = await FoodAndBeverage.findByPk(req.params.id);
-    if (!foodItem) {
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id);
+    if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
-        message: "Food and Beverage item not found",
+        message: "Food and beverage not found",
       });
     }
 
-    const images = await handleFoodAndBeverageImageUploads(
-      req.files,
-      foodItem.id
-    );
+    // Handle file uploads
+    const images = await handleImageUploads(req.files, foodAndBeverage.id);
 
     if (images.length > 0) {
-      await FoodAndBeveragesImage.destroy({
-        where: { foodAndBeverageId: foodItem.id },
-      });
-      await FoodAndBeveragesImage.bulkCreate(images);
+      await foodAndBeverage.updateImages(images);
     }
 
-    const updatedFoodItem = await FoodAndBeverage.findByPk(foodItem.id, {
-      include: [
-        {
-          model: FoodAndBeveragesImage,
-          as: "images",
-          order: [["sortOrder", "ASC"]],
-        },
-      ],
-    });
+    const updatedFoodAndBeverage = await FoodAndBeverage.findByPk(
+      foodAndBeverage.id,
+      {
+        include: [
+          {
+            model: FoodAndBeveragesImage,
+            as: "images",
+            order: [["sortOrder", "ASC"]],
+          },
+        ],
+      }
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage images updated successfully",
-      data: updatedFoodItem,
+      message: "Food and beverage images updated successfully",
+      data: updatedFoodAndBeverage,
     });
   } catch (error) {
     console.error("Error updating food and beverage images:", error);
@@ -496,11 +502,12 @@ exports.updateImages = async (req, res) => {
   }
 };
 
-// Delete Food and Beverages images
+/* Delete food and beverage image */
 exports.deleteImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const image = await FoodAndBeveragesImage.findOne({
@@ -513,10 +520,11 @@ exports.deleteImage = async (req, res) => {
     if (!image) {
       return res.status(404).json({
         success: false,
-        message: "Image not found for this food and beverage item",
+        message: "Image not found for this food and beverage",
       });
     }
 
+    // Delete from S3 if it's an S3-stored image
     if (image.s3Key) {
       await UploadService.deleteFile(image.s3Key);
     }
@@ -525,7 +533,7 @@ exports.deleteImage = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Food and Beverage image deleted successfully",
+      message: "Food and beverage image deleted successfully",
     });
   } catch (error) {
     console.error("Error deleting food and beverage image:", error);
@@ -537,13 +545,15 @@ exports.deleteImage = async (req, res) => {
   }
 };
 
-// Set Featured Image
+/* Set featured image */
 exports.setFeaturedImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
+    // First unset any currently featured image
     await FoodAndBeveragesImage.update(
       { isFeatured: false },
       {
@@ -554,6 +564,7 @@ exports.setFeaturedImage = async (req, res) => {
       }
     );
 
+    // Set the new featured image
     const [affectedCount] = await FoodAndBeveragesImage.update(
       { isFeatured: true },
       {
@@ -567,7 +578,7 @@ exports.setFeaturedImage = async (req, res) => {
     if (affectedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Image not found for this food and beverage item",
+        message: "Image not found for this food and beverage",
       });
     }
 

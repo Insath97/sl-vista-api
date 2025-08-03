@@ -1,18 +1,18 @@
 const { body, param, query } = require("express-validator");
 const { Op } = require("sequelize");
 const FoodAndBeverage = require("../../models/foodAndBeverages.model");
-const FoodAndBeverageImage = require("../../models/FoodAndBeverageImages.model");
+const FoodAndBeveragesImage = require("../../models/FoodAndBeverageImages.model");
 
-// Common ID param validation
+// Common validation rules
 const idParam = param("id")
   .isInt()
   .withMessage("Invalid ID format")
   .custom(async (value, { req }) => {
-    const item = await FoodAndBeverage.findOne({
+    const foodAndBeverage = await FoodAndBeverage.findOne({
       where: { id: value },
       paranoid: req.query.includeDeleted === "true" ? false : true,
     });
-    if (!item) throw new Error("Food and Beverage item not found");
+    if (!foodAndBeverage) throw new Error("Food and beverage not found");
   });
 
 const validateName = body("name")
@@ -36,46 +36,149 @@ const validateSlug = body("slug")
   .isLength({ max: 100 })
   .withMessage("Slug must be less than 100 characters");
 
-const baseValidations = [
-  body("cuisineType").notEmpty().withMessage("Cuisine type is required"),
+// FoodAndBeverage basic validations
+const foodAndBeverageValidations = [
+  body("cuisineType")
+    .isIn([
+      "Chinese",
+      "Japanese",
+      "Thai",
+      "Indian",
+      "Korean",
+      "Vietnamese",
+      "Indonesian",
+    ])
+    .withMessage("Invalid cuisine type"),
 
   body("province")
     .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("Province must be less than 50 characters"),
+    .isIn([
+      "Western",
+      "Central",
+      "Southern",
+      "Northern",
+      "Eastern",
+      "North Western",
+      "North Central",
+      "Uva",
+      "Sabaragamuwa",
+    ])
+    .withMessage("Invalid province"),
 
   body("phone")
+    .trim()
     .notEmpty()
     .withMessage("Phone is required")
     .isLength({ max: 20 })
     .withMessage("Phone must be less than 20 characters"),
 
-  body("email").optional().isEmail().withMessage("Invalid email format"),
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be less than 100 characters"),
 
-  body("website").optional().isURL().withMessage("Invalid website URL"),
+  body("website").optional().trim().isURL().withMessage("Invalid website URL"),
 
   body("city")
     .optional()
+    .trim()
     .isLength({ max: 50 })
     .withMessage("City must be less than 50 characters"),
 
   body("description")
     .optional()
+    .trim()
     .isLength({ max: 2000 })
     .withMessage("Description must be less than 2000 characters"),
+
+  body("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean value"),
 
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean"),
-
-  body("status")
-    .optional()
-    .isIn(["Active", "Pending", "inactive"])
-    .withMessage("Invalid status"),
+    .withMessage("isActive must be a boolean value"),
 ];
 
+// Query validations
+const queryValidations = [
+  query("includeInactive")
+    .optional()
+    .isBoolean()
+    .withMessage("includeInactive must be a boolean"),
+
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean"),
+
+  query("search")
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query too long"),
+
+  query("includeDeleted")
+    .optional()
+    .isBoolean()
+    .withMessage("includeDeleted must be a boolean"),
+
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean"),
+
+  query("city")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("City must be less than 50 characters"),
+
+  query("province")
+    .optional()
+    .isIn([
+      "Western",
+      "Central",
+      "Southern",
+      "Northern",
+      "Eastern",
+      "North Western",
+      "North Central",
+      "Uva",
+      "Sabaragamuwa",
+    ])
+    .withMessage("Invalid province"),
+
+  query("cuisineType")
+    .optional()
+    .isIn([
+      "Chinese",
+      "Japanese",
+      "Thai",
+      "Indian",
+      "Korean",
+      "Vietnamese",
+      "Indonesian",
+    ])
+    .withMessage("Invalid cuisine type"),
+];
+
+// Image validations
 const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),
 
@@ -85,33 +188,29 @@ const imageValidations = [
     .isLength({ max: 512 })
     .withMessage("Image URL must be less than 512 characters"),
 
-  body("images.*.caption")
+  body("images.*.s3Key")
     .optional()
     .isString()
-    .withMessage("Caption must be a string")
-    .isLength({ max: 255 })
-    .withMessage("Caption must be less than 255 characters"),
+    .withMessage("S3 key must be a string")
+    .isLength({ max: 512 })
+    .withMessage("S3 key must be less than 512 characters"),
 
-  body("images.*.isFeatured")
+  body("images.*.fileName")
     .optional()
-    .isBoolean()
-    .withMessage("isFeatured must be a boolean"),
+    .isString()
+    .withMessage("File name must be a string")
+    .isLength({ max: 255 })
+    .withMessage("File name must be less than 255 characters"),
+
+  body("images.*.size")
+    .optional()
+    .isInt()
+    .withMessage("Size must be an integer"),
 
   body("images.*.sortOrder")
     .optional()
     .isInt()
     .withMessage("sortOrder must be an integer"),
-];
-
-const queryValidations = [
-  query("includeInactive").optional().isBoolean(),
-  query("includeImages").optional().isBoolean(),
-  query("includeDeleted").optional().isBoolean(),
-  query("search").optional().isLength({ max: 100 }),
-  query("page").optional().isInt({ min: 1 }),
-  query("limit").optional().isInt({ min: 1, max: 100 }),
-  query("city").optional().isLength({ max: 50 }),
-  query("province").optional().isLength({ max: 50 }),
 ];
 
 const updateImagesValidation = [
@@ -131,23 +230,65 @@ const deleteImageValidation = [
   param("imageId").isInt().withMessage("Invalid image ID"),
 ];
 
-const setFeaturedImageValidation = deleteImageValidation;
+const setFeaturedImageValidation = [
+  param("id").isInt().withMessage("Invalid food and beverage ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
+];
 
 module.exports = {
-  create: [validateName, validateSlug, ...baseValidations, ...imageValidations],
+  // Create FoodAndBeverage
+  create: [
+    validateName,
+    validateSlug,
+    ...foodAndBeverageValidations,
+    ...imageValidations.map((v) => v.optional()),
+  ],
+
+  // Update FoodAndBeverage
   update: [
     idParam,
     validateName.optional(),
     validateSlug,
-    ...baseValidations.map((v) => v.optional()),
+    ...foodAndBeverageValidations.map((v) => v.optional()),
     ...imageValidations.map((v) => v.optional()),
   ],
-  getById: [idParam, query("includeDeleted").optional().isBoolean()],
+
+  // Get by ID
+  getById: [
+    idParam,
+    query("includeDeleted")
+      .optional()
+      .isBoolean()
+      .withMessage("includeDeleted must be a boolean"),
+  ],
+
+  // Delete FoodAndBeverage
   delete: [idParam],
+
+  // List FoodAndBeverages
   list: queryValidations,
+
+  // Toggle Active Status
   toggleStatus: [idParam],
+
+  // Restore Soft-deleted FoodAndBeverage
   restore: [idParam],
+
+  // Verify FoodAndBeverage
+  verify: [
+    idParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean"),
+  ],
+
+  // Update Images
   updateImages: updateImagesValidation,
+
+  // Delete Image
   deleteImage: deleteImageValidation,
+
+  // Set Featured Image
   setFeaturedImage: setFeaturedImageValidation,
 };

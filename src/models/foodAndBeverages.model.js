@@ -63,7 +63,6 @@ FoodAndBeverage.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
-      validate: { isInt: true },
     },
     name: {
       type: DataTypes.STRING(100),
@@ -162,18 +161,7 @@ FoodAndBeverage.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
-    },
-    hooks: {
-      beforeValidate: (food) => {
-        if (food.changed("name") || !food.slug) {
-          food.slug = slugify(food.name || "", {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
-        }
-      },
+      where: { /* isActive: true */ },
     },
   }
 );

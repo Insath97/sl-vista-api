@@ -11,7 +11,7 @@ router.use(authMiddleware.authMiddlewareWithProfile(["admin"]));
 router.post(
   "/",
   uploadMiddleware,
-  // validate.create,
+  validate.create,
   controller.createFoodAndBeverage
 );
 
@@ -25,7 +25,7 @@ router.get("/:id", validate.getById, controller.getFoodAndBeverageById);
 router.put(
   "/:id",
   uploadMiddleware,
-  // validate.update,
+  validate.update,
   controller.updateFoodAndBeverage
 );
 
