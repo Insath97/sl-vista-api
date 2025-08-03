@@ -1,12 +1,12 @@
 const { validationResult } = require("express-validator");
 const slugify = require("slugify");
+const { Op } = require("sequelize");
 const Activities = require("../../models/activities.model");
 const ActivitiesImages = require("../../models/activitesimages.model");
 const UploadService = require("../../helpers/upload");
-const { Op } = require("sequelize");
 
-// 🔧 Helper function to upload images for Activities
-const handleActivityImageUploads = async (files, activityId) => {
+// Helper function to handle image uploads
+const handleImageUploads = async (files, activityId) => {
   if (!files || !files.images || files.images.length === 0) return [];
 
   const uploadPromises = files.images.map((file) =>
@@ -14,7 +14,6 @@ const handleActivityImageUploads = async (files, activityId) => {
   );
 
   const uploadedFiles = await Promise.all(uploadPromises);
-
   return uploadedFiles.map((file) => ({
     activityId,
     imageUrl: file.url,
@@ -25,14 +24,15 @@ const handleActivityImageUploads = async (files, activityId) => {
   }));
 };
 
-//Create Activity Controller
+// Create Activity
 exports.createActivity = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const { ...activityData } = req.body;
+    const activityData = req.body;
 
     // Generate slug if not provided
     if (!activityData.slug && activityData.title) {
@@ -43,22 +43,19 @@ exports.createActivity = async (req, res) => {
       });
     }
 
-    // Create the Activity
     const activity = await Activities.create(activityData);
 
     // Handle image uploads
-    const images = await handleActivityImageUploads(req.files, activity.id);
+    const images = await handleImageUploads(req.files, activity.id);
     if (images.length > 0) {
-      await ActivitiesImages.bulkCreate(images);
+      await activity.addImages(images);
     }
 
-    // Fetch full activity with images
     const fullActivity = await Activities.findByPk(activity.id, {
       include: [
         {
           model: ActivitiesImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -79,65 +76,71 @@ exports.createActivity = async (req, res) => {
   }
 };
 
-// Get all Activities
+// Get All Activities
 exports.getAllActivities = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const {
       isActive,
+      vista,
       includeDeleted,
-      includeImages,
+      page = 1,
+      limit = 10,
       search,
       city,
       district,
-      page = 1,
-      limit = 10,
+      type,
     } = req.query;
 
-    const offset = (page - 1) * limit;
     const where = {};
-    const include = [];
-
-    if (isActive === "true") where.isActive = true;
-    else if (isActive === "false") where.isActive = false;
-
-    if (search) {
-      where.title = { [Op.like]: `%${search}%` };
-    }
-
-    if (city) where.city = city;
-    if (district) where.district = district;
-
-    if (includeImages === "true") {
-      include.push({
+    const include = [
+      {
         model: ActivitiesImages,
         as: "images",
-        separate: true,
         order: [["sortOrder", "ASC"]],
-      });
+      },
+    ];
+
+    // Filter conditions
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vista) where.vista = vista;
+    if (city) where.city = city;
+    if (district) where.district = district;
+    if (type) where.type = type;
+
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
     }
 
-    const result = await Activities.findAndCountAll({
+    const options = {
       where,
       include,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      paranoid: includeDeleted !== "true", // include soft-deleted if true
+      distinct: true,
       order: [["createdAt", "DESC"]],
-    });
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: activities } = await Activities.findAndCountAll(
+      options
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Activities fetched successfully",
-      data: result.rows,
+      data: activities,
       pagination: {
-        total: result.count,
+        total: count,
         page: parseInt(page),
-        pageSize: parseInt(limit),
-        totalPages: Math.ceil(result.count / limit),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
       },
     });
   } catch (error) {
@@ -150,16 +153,15 @@ exports.getAllActivities = async (req, res) => {
   }
 };
 
-//Get by id
-
+// Get Activity by ID
 exports.getActivityById = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const { includeDeleted } = req.query;
-
     const options = {
       where: { id: req.params.id },
       include: [
@@ -195,11 +197,12 @@ exports.getActivityById = async (req, res) => {
   }
 };
 
-//  Update Activity
+// Update Activity
 exports.updateActivity = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findByPk(req.params.id);
@@ -213,26 +216,22 @@ exports.updateActivity = async (req, res) => {
     const { images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    // Handle uploaded files
-    const uploadedImages = await handleActivityImageUploads(
-      req.files,
-      activity.id
-    );
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, activity.id);
     newImages = [...uploadedImages];
 
-    // Merge manually submitted images (e.g., via JSON)
+    // Handle body images
     if (bodyImages?.length) {
       newImages = [
         ...newImages,
         ...bodyImages.map((img) => ({
           ...img,
           s3Key: img.s3Key || null,
-          activityId: activity.id,
         })),
       ];
     }
 
-    // 🌀 Auto-slug if title is changed
+    // Update slug if title changed
     if (
       updateData.title &&
       !updateData.slug &&
@@ -245,18 +244,13 @@ exports.updateActivity = async (req, res) => {
       });
     }
 
-    //  Update activity fields
-    await activity.update(updateData);
-
-    // Replace all images
+    // Update images
     if (newImages.length > 0) {
-      await ActivitiesImages.destroy({
-        where: { activityId: activity.id },
-      });
-      await ActivitiesImages.bulkCreate(newImages);
+      await activity.updateImages(newImages);
     }
 
-    // Return full updated activity with images
+    await activity.update(updateData);
+
     const updatedActivity = await Activities.findByPk(activity.id, {
       include: [
         {
@@ -282,11 +276,12 @@ exports.updateActivity = async (req, res) => {
   }
 };
 
-//  Delete Activity
+// Delete Activity
 exports.deleteActivity = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findByPk(req.params.id, {
@@ -300,9 +295,10 @@ exports.deleteActivity = async (req, res) => {
       });
     }
 
-    //  Collect all S3 keys
-    const s3Keys = activity.images.map((img) => img.s3Key).filter(Boolean);
+    // Get all S3 keys from images
+    const s3Keys = activity.images.map((img) => img.s3Key).filter((key) => key);
 
+    // Delete all associated images from S3
     if (s3Keys.length > 0) {
       if (s3Keys.length === 1) {
         await UploadService.deleteFile(s3Keys[0]);
@@ -311,7 +307,6 @@ exports.deleteActivity = async (req, res) => {
       }
     }
 
-    // Soft delete
     await activity.destroy();
 
     return res.status(200).json({
@@ -328,11 +323,12 @@ exports.deleteActivity = async (req, res) => {
   }
 };
 
-// Restore soft-deleted Activity
+// Restore Activity
 exports.restoreActivity = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findOne({
@@ -381,11 +377,12 @@ exports.restoreActivity = async (req, res) => {
   }
 };
 
-//Toggle Activity Active Status
+// Toggle Active Status
 exports.toggleActiveStatus = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findByPk(req.params.id);
@@ -396,15 +393,14 @@ exports.toggleActiveStatus = async (req, res) => {
       });
     }
 
-    const newStatus = !activity.isActive;
-    await activity.update({ isActive: newStatus });
+    await activity.update({ isActive: !activity.isActive });
 
     return res.status(200).json({
       success: true,
       message: "Activity status toggled successfully",
       data: {
         id: activity.id,
-        isActive: newStatus,
+        isActive: !activity.isActive,
       },
     });
   } catch (error) {
@@ -417,11 +413,12 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 };
 
-//Verify Activity
+// Verify Activity
 exports.verifyActivity = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findByPk(req.params.id);
@@ -435,10 +432,10 @@ exports.verifyActivity = async (req, res) => {
     const newVerifiedStatus =
       req.body.verified !== undefined
         ? req.body.verified
-        : activity.vista !== "Verified";
+        : !activity.vistaVerified;
 
     await activity.update({
-      vista: newVerifiedStatus ? "Verified" : "Not Verified",
+      vistaVerified: newVerifiedStatus,
     });
 
     return res.status(200).json({
@@ -446,7 +443,7 @@ exports.verifyActivity = async (req, res) => {
       message: "Activity verification status updated",
       data: {
         id: activity.id,
-        vista: newVerifiedStatus ? "Verified" : "Not Verified",
+        vistaVerified: newVerifiedStatus,
       },
     });
   } catch (error) {
@@ -459,11 +456,12 @@ exports.verifyActivity = async (req, res) => {
   }
 };
 
-//Update Activity Images
+// Update Images
 exports.updateImages = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const activity = await Activities.findByPk(req.params.id);
@@ -474,14 +472,10 @@ exports.updateImages = async (req, res) => {
       });
     }
 
-    const images = await handleActivityImageUploads(req.files, activity.id);
+    const images = await handleImageUploads(req.files, activity.id);
 
     if (images.length > 0) {
-      await ActivitiesImages.destroy({
-        where: { activityId: activity.id },
-      });
-
-      await ActivitiesImages.bulkCreate(images);
+      await activity.updateImages(images);
     }
 
     const updatedActivity = await Activities.findByPk(activity.id, {
@@ -509,11 +503,12 @@ exports.updateImages = async (req, res) => {
   }
 };
 
-//Delete Activity Image
+// Delete Image
 exports.deleteImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const image = await ActivitiesImages.findOne({
@@ -550,14 +545,15 @@ exports.deleteImage = async (req, res) => {
   }
 };
 
-//  Set Featured Activity Image
+// Set Featured Image
 exports.setFeaturedImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    // Remove existing featured image for the activity
+    // First unset any currently featured image
     await ActivitiesImages.update(
       { isFeatured: false },
       {
@@ -568,7 +564,7 @@ exports.setFeaturedImage = async (req, res) => {
       }
     );
 
-    // Set new featured image
+    // Set the new featured image
     const [affectedCount] = await ActivitiesImages.update(
       { isFeatured: true },
       {

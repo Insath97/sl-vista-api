@@ -33,7 +33,7 @@ router.put(
 router.delete("/:id", validate.delete, controller.deleteActivity);
 
 //Restore
-router.patch("/restore/:id", validate.restore, controller.restoreActivity);
+router.patch("/restore/:id", controller.restoreActivity);
 
 //Toggle active status
 router.patch(

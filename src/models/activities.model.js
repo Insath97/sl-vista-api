@@ -68,7 +68,6 @@ Activities.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
-      validate: { isInt: true },
     },
     title: {
       type: DataTypes.STRING(100),
@@ -135,8 +134,14 @@ Activities.init(
       type: DataTypes.STRING(50),
       allowNull: true,
     },
-    vista: {
-      type: DataTypes.ENUM("Verified", "Not Verified"),
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     isActive: {
       type: DataTypes.BOOLEAN,
