@@ -35,11 +35,15 @@ exports.createGuide = async (req, res) => {
     const guideData = req.body;
 
     // Handle array fields
-    if (guideData.languages && typeof guideData.languages === 'string') {
-      guideData.languages = guideData.languages.split(',').map(lang => lang.trim());
+    if (guideData.languages && typeof guideData.languages === "string") {
+      guideData.languages = guideData.languages
+        .split(",")
+        .map((lang) => lang.trim());
     }
-    if (guideData.specialties && typeof guideData.specialties === 'string') {
-      guideData.specialties = guideData.specialties.split(',').map(spec => spec.trim());
+    if (guideData.specialties && typeof guideData.specialties === "string") {
+      guideData.specialties = guideData.specialties
+        .split(",")
+        .map((spec) => spec.trim());
     }
 
     // Generate slug if not provided
@@ -96,7 +100,6 @@ exports.getAllGuides = async (req, res) => {
       isActive,
       vistaVerified,
       includeDeleted,
-      includeImages,
       page = 1,
       limit = 10,
       search,
@@ -110,17 +113,32 @@ exports.getAllGuides = async (req, res) => {
     } = req.query;
 
     const where = {};
-    const include = [];
+    const include = [
+      {
+        model: GuidesImages,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      },
+    ];
 
     // Filter conditions
     if (isActive !== undefined) where.isActive = isActive === "true";
-    if (vistaVerified !== undefined) where.vistaVerified = vistaVerified === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
     if (region) where.region = region;
     if (language) where.languages = { [Op.like]: `%${language}%` };
     if (minExperience) where.experience = { [Op.gte]: parseInt(minExperience) };
-    if (maxExperience) where.experience = { ...where.experience, [Op.lte]: parseInt(maxExperience) };
+    if (maxExperience)
+      where.experience = {
+        ...where.experience,
+        [Op.lte]: parseInt(maxExperience),
+      };
     if (minRate) where.ratePerDayAmount = { [Op.gte]: parseFloat(minRate) };
-    if (maxRate) where.ratePerDayAmount = { ...where.ratePerDayAmount, [Op.lte]: parseFloat(maxRate) };
+    if (maxRate)
+      where.ratePerDayAmount = {
+        ...where.ratePerDayAmount,
+        [Op.lte]: parseFloat(maxRate),
+      };
     if (currency) where.ratePerDayCurrency = currency;
 
     if (search) {
@@ -129,14 +147,6 @@ exports.getAllGuides = async (req, res) => {
         { bio: { [Op.like]: `%${search}%` } },
         { specialties: { [Op.like]: `%${search}%` } },
       ];
-    }
-
-    if (includeImages === "true") {
-      include.push({
-        model: GuidesImages,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
     }
 
     const options = {
@@ -235,11 +245,15 @@ exports.updateGuide = async (req, res) => {
     let newImages = [];
 
     // Handle array fields
-    if (updateData.languages && typeof updateData.languages === 'string') {
-      updateData.languages = updateData.languages.split(',').map(lang => lang.trim());
+    if (updateData.languages && typeof updateData.languages === "string") {
+      updateData.languages = updateData.languages
+        .split(",")
+        .map((lang) => lang.trim());
     }
-    if (updateData.specialties && typeof updateData.specialties === 'string') {
-      updateData.specialties = updateData.specialties.split(',').map(spec => spec.trim());
+    if (updateData.specialties && typeof updateData.specialties === "string") {
+      updateData.specialties = updateData.specialties
+        .split(",")
+        .map((spec) => spec.trim());
     }
 
     // Handle file uploads
