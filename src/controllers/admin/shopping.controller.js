@@ -88,7 +88,6 @@ exports.getAllShoppings = async (req, res) => {
       isActive,
       vistaVerified,
       includeDeleted,
-      includeImages,
       page = 1,
       limit = 10,
       search,
@@ -98,15 +97,13 @@ exports.getAllShoppings = async (req, res) => {
     } = req.query;
 
     const where = {};
-    const include = [];
-
-    if (includeImages === "true") {
-      include.push({
+    const include = [
+      {
         model: ShoppingImages,
         as: "images",
         order: [["sortOrder", "ASC"]],
-      });
-    }
+      },
+    ];
 
     // Filter conditions
     if (isActive !== undefined) where.isActive = isActive === "true";

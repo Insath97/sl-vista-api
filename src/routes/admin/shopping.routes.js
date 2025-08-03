@@ -28,7 +28,7 @@ router.put(
 router.delete("/:id", validate.delete, controller.deleteShopping);
 
 // PATCH /restore/:id
-router.patch("/restore/:id", validate.restore, controller.restoreShopping);
+router.patch("/restore/:id", controller.restoreShopping);
 
 // Toggle active status
 router.patch(

@@ -131,6 +131,10 @@ Shopping.init(
         isEmail: { msg: "Invalid email format" },
       },
     },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     vistaVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
