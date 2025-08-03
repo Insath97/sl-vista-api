@@ -32,6 +32,15 @@ exports.createFoodAndBeverage = async (req, res) => {
   try {
     const foodAndBeverageData = req.body;
 
+    // Generate slug if not provided
+    if (!foodAndBeverageData.slug && foodAndBeverageData.name) {
+      foodAndBeverageData.slug = slugify(foodAndBeverageData.name, {
+        lower: true,
+        strict: true,
+        remove: /[*+~.()'"!:@]/g,
+      });
+    }
+
     const foodAndBeverage = await FoodAndBeverage.create(foodAndBeverageData);
 
     // Handle image uploads
@@ -385,7 +394,7 @@ exports.toggleActiveStatus = async (req, res) => {
       });
     }
 
-     const newActiveStatus =
+    const newActiveStatus =
       req.body.active !== undefined
         ? req.body.active
         : !foodAndBeverage.isActive;
