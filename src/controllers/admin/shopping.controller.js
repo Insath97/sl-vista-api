@@ -4,17 +4,15 @@ const Shopping = require("../../models/shoppings.model");
 const ShoppingImages = require("../../models/shoppingimages.model");
 const UploadService = require("../../helpers/upload");
 const { Op } = require("sequelize");
-
-// 🔧 Helper function to upload images for Shopping
-const handleShoppingImageUploads = async (files, shoppingId) => {
+// Helper function to handle image uploads
+const handleImageUploads = async (files, shoppingId) => {
   if (!files || !files.images || files.images.length === 0) return [];
 
   const uploadPromises = files.images.map((file) =>
-    UploadService.uploadFile(file, "shoppings", shoppingId)
+    UploadService.uploadFile(file, "shopping", shoppingId)
   );
 
   const uploadedFiles = await Promise.all(uploadPromises);
-
   return uploadedFiles.map((file) => ({
     shoppingId,
     imageUrl: file.url,
@@ -25,14 +23,15 @@ const handleShoppingImageUploads = async (files, shoppingId) => {
   }));
 };
 
-//Create Shopping Controller
+/* Create shopping with images */
 exports.createShopping = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    const { ...shoppingData } = req.body;
+    const shoppingData = req.body;
 
     // Generate slug if not provided
     if (!shoppingData.slug && shoppingData.name) {
@@ -43,22 +42,20 @@ exports.createShopping = async (req, res) => {
       });
     }
 
-    //  Create the Shopping item
     const shopping = await Shopping.create(shoppingData);
 
     // Handle image uploads
-    const images = await handleShoppingImageUploads(req.files, shopping.id);
+    const images = await handleImageUploads(req.files, shopping.id);
     if (images.length > 0) {
       await ShoppingImages.bulkCreate(images);
     }
 
-    //Fetch full shopping item with images
-    const fullShopping = await Shopping.findByPk(shopping.id, {
+    // Fetch with associations
+    const shoppingWithAssociations = await Shopping.findByPk(shopping.id, {
       include: [
         {
           model: ShoppingImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -66,106 +63,113 @@ exports.createShopping = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Shopping item created successfully",
-      data: fullShopping,
+      message: "Shopping created successfully",
+      data: shoppingWithAssociations,
     });
   } catch (error) {
-    console.error("Error creating shopping item:", error);
+    console.error("Error creating shopping:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to create shopping item",
+      message: "Failed to create shopping",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-// Get all Shopping items
+/* Get all shoppings */
 exports.getAllShoppings = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const {
       isActive,
+      vistaVerified,
       includeDeleted,
       includeImages,
+      page = 1,
+      limit = 10,
       search,
       city,
       province,
-      page = 1,
-      limit = 10,
+      category,
     } = req.query;
 
-    const offset = (page - 1) * limit;
     const where = {};
     const include = [];
-
-    if (isActive === "true") where.isActive = true;
-    else if (isActive === "false") where.isActive = false;
-
-    if (search) {
-      where.name = { [Op.like]: `%${search}%` };
-    }
-
-    if (city) where.city = city;
-    if (province) where.province = province;
 
     if (includeImages === "true") {
       include.push({
         model: ShoppingImages,
         as: "images",
-        separate: true,
         order: [["sortOrder", "ASC"]],
       });
     }
 
-    const result = await Shopping.findAndCountAll({
+    // Filter conditions
+    if (isActive !== undefined) where.isActive = isActive === "true";
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+    if (city) where.city = city;
+    if (province) where.province = province;
+    if (category) where.category = category;
+
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
       where,
       include,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      paranoid: includeDeleted !== "true",
+      distinct: true,
       order: [["createdAt", "DESC"]],
-    });
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: shoppings } = await Shopping.findAndCountAll(options);
 
     return res.status(200).json({
       success: true,
-      message: "Shopping items fetched successfully",
-      data: result.rows,
+      data: shoppings,
       pagination: {
-        total: result.count,
+        total: count,
         page: parseInt(page),
-        pageSize: parseInt(limit),
-        totalPages: Math.ceil(result.count / limit),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
       },
     });
   } catch (error) {
-    console.error("Error fetching shopping items:", error);
+    console.error("Error fetching shoppings:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch shopping items",
+      message: "Failed to fetch shoppings",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-// Get Shopping by ID
+/* Get shopping by ID */
 exports.getShoppingById = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const { includeDeleted } = req.query;
-
     const options = {
       where: { id: req.params.id },
       include: [
         {
           model: ShoppingImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -177,7 +181,7 @@ exports.getShoppingById = async (req, res) => {
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
@@ -186,53 +190,50 @@ exports.getShoppingById = async (req, res) => {
       data: shopping,
     });
   } catch (error) {
-    console.error("Error fetching shopping item:", error);
+    console.error("Error fetching shopping:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch shopping item",
+      message: "Failed to fetch shopping",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-//Update Shopping Controller
+/* Update shopping */
 exports.updateShopping = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findByPk(req.params.id);
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
     const { images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    // 📸 Upload new files (if any)
-    const uploadedImages = await handleShoppingImageUploads(
-      req.files,
-      shopping.id
-    );
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, shopping.id);
     newImages = [...uploadedImages];
 
-    // 🧩 Include any images passed via request body
+    // Handle body images
     if (bodyImages?.length) {
       newImages = [
         ...newImages,
         ...bodyImages.map((img) => ({
           ...img,
           s3Key: img.s3Key || null,
-          shoppingId: shopping.id,
         })),
       ];
     }
 
-    // 🔁 Generate new slug if name changed and no slug provided
+    // Update slug if name changed
     if (
       updateData.name &&
       !updateData.slug &&
@@ -245,24 +246,19 @@ exports.updateShopping = async (req, res) => {
       });
     }
 
-    //Update the shopping item
-    await shopping.update(updateData);
-
-    //Replace existing images if new ones provided
+    // Update images
     if (newImages.length > 0) {
-      await ShoppingImages.destroy({
-        where: { shoppingId: shopping.id },
-      });
-      await ShoppingImages.bulkCreate(newImages);
+      await shopping.updateImages(newImages);
     }
 
-    // Fetch full updated shopping item with images
+    await shopping.update(updateData);
+
+    // Fetch updated shopping
     const updatedShopping = await Shopping.findByPk(shopping.id, {
       include: [
         {
           model: ShoppingImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -270,24 +266,25 @@ exports.updateShopping = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Shopping item updated successfully",
+      message: "Shopping updated successfully",
       data: updatedShopping,
     });
   } catch (error) {
-    console.error("Error updating shopping item:", error);
+    console.error("Error updating shopping:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update shopping item",
+      message: "Failed to update shopping",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-//Delete Shopping Controller
+/* Delete shopping */
 exports.deleteShopping = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findByPk(req.params.id, {
@@ -297,12 +294,14 @@ exports.deleteShopping = async (req, res) => {
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
-    const s3Keys = shopping.images.map((img) => img.s3Key).filter(Boolean);
+    // Get all S3 keys from images
+    const s3Keys = shopping.images.map((img) => img.s3Key).filter((key) => key);
 
+    // Delete all associated images from S3
     if (s3Keys.length > 0) {
       if (s3Keys.length === 1) {
         await UploadService.deleteFile(s3Keys[0]);
@@ -311,27 +310,28 @@ exports.deleteShopping = async (req, res) => {
       }
     }
 
-    await shopping.destroy(); // Soft delete due to paranoid: true
+    await shopping.destroy();
 
     return res.status(200).json({
       success: true,
-      message: "Shopping item deleted successfully",
+      message: "Shopping deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting shopping item:", error);
+    console.error("Error deleting shopping:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete shopping item",
+      message: "Failed to delete shopping",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-//  Restore soft-deleted Shopping item
+/* Restore soft-deleted shopping */
 exports.restoreShopping = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findOne({
@@ -342,14 +342,14 @@ exports.restoreShopping = async (req, res) => {
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found (including soft-deleted)",
+        message: "Shopping not found (including soft-deleted)",
       });
     }
 
     if (!shopping.deletedAt) {
       return res.status(400).json({
         success: false,
-        message: "Shopping item is not deleted",
+        message: "Shopping is not deleted",
       });
     }
 
@@ -360,7 +360,6 @@ exports.restoreShopping = async (req, res) => {
         {
           model: ShoppingImages,
           as: "images",
-          separate: true,
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -368,44 +367,43 @@ exports.restoreShopping = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Shopping item restored successfully",
+      message: "Shopping restored successfully",
       data: restoredShopping,
     });
   } catch (error) {
-    console.error("Error restoring shopping item:", error);
+    console.error("Error restoring shopping:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to restore shopping item",
+      message: "Failed to restore shopping",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-// Toggle Shopping Active Status
+/* Toggle shopping active status */
 exports.toggleActiveStatus = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findByPk(req.params.id);
-
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
-    const newStatus = !shopping.isActive;
-    await shopping.update({ isActive: newStatus });
+    await shopping.update({ isActive: !shopping.isActive });
 
     return res.status(200).json({
       success: true,
-      message: "Shopping item status toggled successfully",
+      message: "Shopping status toggled successfully",
       data: {
         id: shopping.id,
-        isActive: newStatus,
+        isActive: !shopping.isActive,
       },
     });
   } catch (error) {
@@ -418,19 +416,19 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 };
 
-// Verify Shopping Item
+/* Verify shopping */
 exports.verifyShopping = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findByPk(req.params.id);
-
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
@@ -450,7 +448,7 @@ exports.verifyShopping = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error verifying shopping item:", error);
+    console.error("Error verifying shopping:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to update verification status",
@@ -459,28 +457,27 @@ exports.verifyShopping = async (req, res) => {
   }
 };
 
-// Update Shopping Images
-exports.updateShoppingImages = async (req, res) => {
+/* Update shopping images */
+exports.updateImages = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const shopping = await Shopping.findByPk(req.params.id);
     if (!shopping) {
       return res.status(404).json({
         success: false,
-        message: "Shopping item not found",
+        message: "Shopping not found",
       });
     }
 
-    const images = await handleShoppingImageUploads(req.files, shopping.id);
+    // Handle file uploads
+    const images = await handleImageUploads(req.files, shopping.id);
 
     if (images.length > 0) {
-      await ShoppingImages.destroy({
-        where: { shoppingId: shopping.id },
-      });
-      await ShoppingImages.bulkCreate(images);
+      await shopping.updateImages(images);
     }
 
     const updatedShopping = await Shopping.findByPk(shopping.id, {
@@ -508,11 +505,12 @@ exports.updateShoppingImages = async (req, res) => {
   }
 };
 
-//Delete shopping image
+/* Delete shopping image */
 exports.deleteImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
     const image = await ShoppingImages.findOne({
@@ -525,10 +523,11 @@ exports.deleteImage = async (req, res) => {
     if (!image) {
       return res.status(404).json({
         success: false,
-        message: "Image not found for this shopping item",
+        message: "Image not found for this shopping",
       });
     }
 
+    // Delete from S3 if it's an S3-stored image
     if (image.s3Key) {
       await UploadService.deleteFile(image.s3Key);
     }
@@ -549,14 +548,15 @@ exports.deleteImage = async (req, res) => {
   }
 };
 
-//Set new features image
+/* Set featured image */
 exports.setFeaturedImage = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
 
   try {
-    // Remove existing featured image for the shopping item
+    // First unset any currently featured image
     await ShoppingImages.update(
       { isFeatured: false },
       {
@@ -567,7 +567,7 @@ exports.setFeaturedImage = async (req, res) => {
       }
     );
 
-    // Set new featured image
+    // Set the new featured image
     const [affectedCount] = await ShoppingImages.update(
       { isFeatured: true },
       {
@@ -581,7 +581,7 @@ exports.setFeaturedImage = async (req, res) => {
     if (affectedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Image not found for this shopping item",
+        message: "Image not found for this shopping",
       });
     }
 

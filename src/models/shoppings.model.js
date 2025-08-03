@@ -67,7 +67,6 @@ Shopping.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
-      validate: { isInt: true },
     },
     name: {
       type: DataTypes.STRING(100),
@@ -92,9 +91,13 @@ Shopping.init(
       },
     },
     slug: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true,
+      unique: { msg: "This slug is already in use" },
+      validate: {
+        is: { args: /^[a-z0-9-]+$/, msg: "Invalid slug format" },
+        notEmpty: true,
+      },
     },
     category: {
       type: DataTypes.ENUM(
@@ -117,9 +120,6 @@ Shopping.init(
     phone: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      set(value) {
-        this.setDataValue("phone", value.trim());
-      },
       validate: {
         notEmpty: { msg: "Phone number is required" },
       },
@@ -127,12 +127,14 @@ Shopping.init(
     email: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      set(value) {
-        if (value) this.setDataValue("email", value.trim());
-      },
       validate: {
         isEmail: { msg: "Invalid email format" },
       },
+    },
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
     },
     isActive: {
       type: DataTypes.BOOLEAN,
@@ -146,17 +148,6 @@ Shopping.init(
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
-    },
-    hooks: {
-      beforeValidate: (shopping) => {
-        if (shopping.changed("name") || !shopping.slug) {
-          shopping.slug = slugify(shopping.name || "", {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
-        }
-      },
     },
   }
 );

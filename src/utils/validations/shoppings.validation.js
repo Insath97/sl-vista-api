@@ -3,19 +3,18 @@ const { Op } = require("sequelize");
 const Shopping = require("../../models/shoppings.model");
 const ShoppingImages = require("../../models/shoppingimages.model");
 
-// Common ID param validation
+// Common validation rules
 const idParam = param("id")
   .isInt()
   .withMessage("Invalid ID format")
   .custom(async (value, { req }) => {
-    const item = await Shopping.findOne({
+    const shopping = await Shopping.findOne({
       where: { id: value },
       paranoid: req.query.includeDeleted === "true" ? false : true,
     });
-    if (!item) throw new Error("Shopping item not found");
+    if (!shopping) throw new Error("Shopping not found");
   });
 
-// Unique and validated name
 const validateName = body("name")
   .trim()
   .isLength({ min: 2, max: 100 })
@@ -29,7 +28,6 @@ const validateName = body("name")
     if (exists) throw new Error("Name already exists");
   });
 
-// Slug validation
 const validateSlug = body("slug")
   .optional()
   .trim()
@@ -38,19 +36,12 @@ const validateSlug = body("slug")
   .isLength({ max: 100 })
   .withMessage("Slug must be less than 100 characters");
 
-// Core fields validation
-const baseValidations = [
+// Shopping basic validations
+const shoppingValidations = [
   body("category")
-    .notEmpty()
-    .withMessage("Category is required")
+    .optional()
     .isIn(["Handicrafts", "Textiles", "Jewelry", "Art", "Pottery"])
     .withMessage("Invalid category"),
-
-  body("province")
-    .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("Province must be less than 50 characters"),
 
   body("city")
     .optional()
@@ -58,21 +49,95 @@ const baseValidations = [
     .isLength({ max: 50 })
     .withMessage("City must be less than 50 characters"),
 
+  body("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
+
   body("phone")
+    .trim()
     .notEmpty()
     .withMessage("Phone is required")
     .isLength({ max: 20 })
     .withMessage("Phone must be less than 20 characters"),
 
-  body("email").optional().isEmail().withMessage("Invalid email format"),
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be less than 100 characters"),
+
+  body("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean value"),
 
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean"),
+    .withMessage("isActive must be a boolean value"),
 ];
 
-// Images array validation
+// Query validations
+const queryValidations = [
+  query("includeInactive")
+    .optional()
+    .isBoolean()
+    .withMessage("includeInactive must be a boolean"),
+
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean"),
+
+  query("search")
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query too long"),
+
+  query("includeDeleted")
+    .optional()
+    .isBoolean()
+    .withMessage("includeDeleted must be a boolean"),
+
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean"),
+
+  query("city")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("City must be less than 50 characters"),
+
+  query("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
+
+  query("category")
+    .optional()
+    .isIn(["Handicrafts", "Textiles", "Jewelry", "Art", "Pottery"])
+    .withMessage("Invalid category"),
+];
+
+// Image validations
 const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),
 
@@ -100,19 +165,6 @@ const imageValidations = [
     .withMessage("sortOrder must be an integer"),
 ];
 
-// Query param validation for GET /list or filters
-const queryValidations = [
-  query("includeInactive").optional().isBoolean(),
-  query("includeImages").optional().isBoolean(),
-  query("includeDeleted").optional().isBoolean(),
-  query("search").optional().isLength({ max: 100 }),
-  query("page").optional().isInt({ min: 1 }),
-  query("limit").optional().isInt({ min: 1, max: 100 }),
-  query("city").optional().isLength({ max: 50 }),
-  query("province").optional().isLength({ max: 50 }),
-];
-
-// Images update payload
 const updateImagesValidation = [
   param("id").isInt().withMessage("Invalid shopping ID"),
   body("images")
@@ -125,29 +177,70 @@ const updateImagesValidation = [
     .withMessage("Image ID must be an integer"),
 ];
 
-// For deleting or setting featured image
 const deleteImageValidation = [
   param("id").isInt().withMessage("Invalid shopping ID"),
   param("imageId").isInt().withMessage("Invalid image ID"),
 ];
 
-const setFeaturedImageValidation = deleteImageValidation;
+const setFeaturedImageValidation = [
+  param("id").isInt().withMessage("Invalid shopping ID"),
+  param("imageId").isInt().withMessage("Invalid image ID"),
+];
 
 module.exports = {
-  create: [validateName, validateSlug, ...baseValidations, ...imageValidations],
+  // Create Shopping
+  create: [
+    validateName,
+    validateSlug,
+    ...shoppingValidations,
+    ...imageValidations.map((v) => v.optional()),
+  ],
+
+  // Update Shopping
   update: [
     idParam,
     validateName.optional(),
     validateSlug,
-    ...baseValidations.map((v) => v.optional()),
+    ...shoppingValidations.map((v) => v.optional()),
     ...imageValidations.map((v) => v.optional()),
   ],
-  getById: [idParam, query("includeDeleted").optional().isBoolean()],
+
+  // Get by ID
+  getById: [
+    idParam,
+    query("includeDeleted")
+      .optional()
+      .isBoolean()
+      .withMessage("includeDeleted must be a boolean"),
+  ],
+
+  // Delete Shopping
   delete: [idParam],
+
+  // List Shoppings
   list: queryValidations,
+
+  // Toggle Active Status
   toggleStatus: [idParam],
+
+  // Restore Soft-deleted Shopping
   restore: [idParam],
+
+  // Verify Shopping
+  verify: [
+    idParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean"),
+  ],
+
+  // Update Images
   updateImages: updateImagesValidation,
+
+  // Delete Image
   deleteImage: deleteImageValidation,
+
+  // Set Featured Image
   setFeaturedImage: setFeaturedImageValidation,
 };
