@@ -17,7 +17,6 @@ LocalArtistsImage.init(
         model: "local_artists",
         key: "id",
       },
-     
     },
     imageUrl: {
       type: DataTypes.STRING(512),
@@ -65,7 +64,6 @@ LocalArtistsImage.init(
       order: [["sortOrder", "ASC"]],
     },
   }
-
 );
 
 module.exports = LocalArtistsImage;

@@ -25,7 +25,7 @@ const handleImageUploads = async (files, artistId) => {
   }));
 };
 
-/* Create local artist with images and artist types */
+// Create Local Artist
 exports.createLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -49,7 +49,7 @@ exports.createLocalArtist = async (req, res) => {
     // Handle image uploads
     const images = await handleImageUploads(req.files, artist.id);
     if (images.length > 0) {
-      await LocalArtistImage.bulkCreate(images);
+      await artist.addImages(images);
     }
 
     // Add artist types if provided
@@ -63,10 +63,13 @@ exports.createLocalArtist = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: LocalArtistImage,
           as: "images",
+          attributes: ["id", "localArtistId", "imageUrl", "fileName"],
           order: [["sortOrder", "ASC"]],
         },
       ],
@@ -87,7 +90,7 @@ exports.createLocalArtist = async (req, res) => {
   }
 };
 
-/* Get all local artists */
+// Get All Local Artists
 exports.getAllLocalArtists = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -107,6 +110,7 @@ exports.getAllLocalArtists = async (req, res) => {
       city,
       district,
       province,
+      artistTypeId,
     } = req.query;
 
     const where = {};
@@ -114,33 +118,22 @@ exports.getAllLocalArtists = async (req, res) => {
       {
         model: ArtistType,
         as: "artistTypes",
+        through: { attributes: [] },
+        attributes: ["id", "name"],
       },
       {
         model: LocalArtistImage,
         as: "images",
+        attributes: ["id", "localArtistId", "imageUrl", "fileName"],
         order: [["sortOrder", "ASC"]],
       },
     ];
 
-    if (includeTypes === "true") {
-      include.push({
-        model: ArtistType,
-        as: "artistTypes",
-        through: { attributes: [] },
-      });
-    }
-
-    if (includeImages === "true") {
-      include.push({
-        model: LocalArtistImage,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
-    }
-
     // Filter conditions
     if (isActive !== undefined) where.isActive = isActive === "true";
-    if (vistaVerified !== undefined) if (city) where.city = city;
+    if (vistaVerified !== undefined)
+      where.vistaVerified = vistaVerified === "true";
+    if (city) where.city = city;
     if (district) where.district = district;
     if (province) where.province = province;
 
@@ -150,6 +143,23 @@ exports.getAllLocalArtists = async (req, res) => {
         { specialization: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
       ];
+    }
+
+    if (includeTypes === "true") {
+      include.push({
+        model: ArtistType,
+        as: "artistTypes",
+        through: { attributes: [] },
+        ...(artistTypeId && { where: { id: artistTypeId } }),
+      });
+    }
+
+    if (includeImages === "true") {
+      include.push({
+        model: LocalArtistImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+      });
     }
 
     const options = {
@@ -186,7 +196,7 @@ exports.getAllLocalArtists = async (req, res) => {
   }
 };
 
-/* Get local artist by ID */
+// Get Local Artist by ID
 exports.getLocalArtistById = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -201,10 +211,14 @@ exports.getLocalArtistById = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: LocalArtistImage,
           as: "images",
+          attributes: ["id", "localArtistId", "imageUrl", "fileName"],
+          order: [["sortOrder", "ASC"]],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -233,7 +247,7 @@ exports.getLocalArtistById = async (req, res) => {
   }
 };
 
-/* Update local artist */
+// Update Local Artist
 exports.updateLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -287,10 +301,7 @@ exports.updateLocalArtist = async (req, res) => {
 
     // Update images
     if (newImages.length > 0) {
-      await LocalArtistImage.destroy({
-        where: { localArtistId: artist.id },
-      });
-      await LocalArtistImage.bulkCreate(newImages);
+      await artist.updateImages(newImages);
     }
 
     await artist.update(updateData);
@@ -301,6 +312,7 @@ exports.updateLocalArtist = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -325,7 +337,7 @@ exports.updateLocalArtist = async (req, res) => {
   }
 };
 
-/* Delete local artist */
+// Delete Local Artist
 exports.deleteLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -372,7 +384,7 @@ exports.deleteLocalArtist = async (req, res) => {
   }
 };
 
-/* Restore soft-deleted local artist */
+// Restore Local Artist
 exports.restoreLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -382,7 +394,7 @@ exports.restoreLocalArtist = async (req, res) => {
   try {
     const artist = await LocalArtists.findOne({
       where: { id: req.params.id },
-      paranoid: false,
+      paranoid: false, // Important: include soft-deleted records
     });
 
     if (!artist) {
@@ -401,19 +413,31 @@ exports.restoreLocalArtist = async (req, res) => {
 
     await artist.restore();
 
+    // Fetch the restored artist with associations
     const restoredArtist = await LocalArtists.findByPk(req.params.id, {
       include: [
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
+          attributes: ["id", "name"], // Only include needed fields
         },
         {
           model: LocalArtistImage,
           as: "images",
+          attributes: ["id", "localArtistId", "imageUrl", "fileName"],
           order: [["sortOrder", "ASC"]],
         },
       ],
+      paranoid: false, // Important: ensure we can find recently restored records
     });
+
+    if (!restoredArtist) {
+      return res.status(500).json({
+        success: false,
+        message: "Artist restored but could not be fetched",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -430,7 +454,7 @@ exports.restoreLocalArtist = async (req, res) => {
   }
 };
 
-/* Toggle local artist active status */
+// Toggle Active Status
 exports.toggleActiveStatus = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -446,14 +470,15 @@ exports.toggleActiveStatus = async (req, res) => {
       });
     }
 
-    await artist.update({ isActive: !artist.isActive });
+    const newStatus = !artist.isActive;
+    await artist.update({ isActive: newStatus });
 
     return res.status(200).json({
       success: true,
       message: "Local artist status toggled successfully",
       data: {
         id: artist.id,
-        isActive: artist.isActive,
+        isActive: newStatus,
       },
     });
   } catch (error) {
@@ -466,7 +491,7 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 };
 
-/*verify artists */
+// Verify Local Artist
 exports.verifyLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -507,7 +532,7 @@ exports.verifyLocalArtist = async (req, res) => {
   }
 };
 
-/* Update local artist types */
+// Update Artist Types
 exports.updateArtistTypes = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -532,6 +557,7 @@ exports.updateArtistTypes = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -556,7 +582,7 @@ exports.updateArtistTypes = async (req, res) => {
   }
 };
 
-/* Update local artist images */
+// Update Images
 exports.updateImages = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -576,10 +602,7 @@ exports.updateImages = async (req, res) => {
     const images = await handleImageUploads(req.files, artist.id);
 
     if (images.length > 0) {
-      await LocalArtistImage.destroy({
-        where: { localArtistId: artist.id },
-      });
-      await LocalArtistImage.bulkCreate(images);
+      await artist.updateImages(images);
     }
 
     const updatedArtist = await LocalArtists.findByPk(artist.id, {
@@ -587,6 +610,7 @@ exports.updateImages = async (req, res) => {
         {
           model: ArtistType,
           as: "artistTypes",
+          through: { attributes: [] },
         },
         {
           model: LocalArtistImage,
@@ -611,7 +635,7 @@ exports.updateImages = async (req, res) => {
   }
 };
 
-/* Delete local artist image */
+// Delete Image
 exports.deleteImage = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -654,7 +678,7 @@ exports.deleteImage = async (req, res) => {
   }
 };
 
-/* Set featured image */
+// Set Featured Image
 exports.setFeaturedImage = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

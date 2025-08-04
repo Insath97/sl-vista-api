@@ -2,61 +2,53 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/admin/localArtists.controller");
 const validate = require("../../utils/validations/localArtists.validation");
-const authMiddleware = require("../../middlewares/auth.middleware");
+const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
-router.use(authMiddleware.authMiddlewareWithProfile(['admin']));
+router.use(middleware.authenticate);
 
 // Create local artist
 router.post(
   "/",
   uploadMiddleware,
-  /*  validate.create, */
+  validate.create,
   controller.createLocalArtist
 );
 
 // Get all local artists
-router.get("/", /* validate.list */ controller.getAllLocalArtists);
+router.get("/", validate.list, controller.getAllLocalArtists);
 
 // Get local artist by ID
-router.get("/:id", /* validate.getById */ controller.getLocalArtistById);
+router.get("/:id", validate.getById, controller.getLocalArtistById);
 
 // Update local artist
 router.put(
   "/:id",
   uploadMiddleware,
-  /* validate.update */
+  validate.update,
   controller.updateLocalArtist
 );
 
 // Delete local artist
-router.delete("/:id", /* validate.delete, */ controller.deleteLocalArtist);
+router.delete("/:id", validate.delete, controller.deleteLocalArtist);
 
 // Restore local artist
-router.patch(
-  "/restore/:id",
-  /*  validate.restore, */
-  controller.restoreLocalArtist
-);
+router.patch("/restore/:id",controller.restoreLocalArtist);
 
 // Toggle active status
 router.patch(
   "/status/:id",
-  /*   validate.toggleStatus, */
+  validate.toggleStatus,
   controller.toggleActiveStatus
 );
 
 // Verify local artist
-router.patch(
-  "/verify/:id",
-  /* validate.verify, */
-  controller.verifyLocalArtist
-);
+router.patch("/verify/:id", controller.verifyLocalArtist);
 
 // Update artist types
 router.patch(
   "/:id/artist-types",
-  /*  validate.updateArtistTypes, */
+  validate.updateArtistTypes,
   controller.updateArtistTypes
 );
 
@@ -64,21 +56,21 @@ router.patch(
 router.patch(
   "/:id/images",
   uploadMiddleware,
-  /* validate.updateImages, */
+  validate.updateImages,
   controller.updateImages
 );
 
 // Delete image
 router.delete(
   "/:id/images/:imageId",
-  /*  validate.deleteImage, */
+  validate.deleteImage,
   controller.deleteImage
 );
 
 // Set featured image
 router.patch(
   "/:id/images/:imageId/featured",
-  /*   validate.setFeaturedImage, */
+  validate.setFeaturedImage,
   controller.setFeaturedImage
 );
 

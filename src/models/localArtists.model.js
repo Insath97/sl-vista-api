@@ -5,7 +5,7 @@ const { sequelize } = require("../config/database");
 class LocalArtists extends Model {
   static associate(models) {
     this.belongsToMany(models.ArtistType, {
-      through: models.LocalArtistsType, // join model
+      through: models.LocalArtistsType,
       foreignKey: "localArtistId",
       as: "artistTypes",
     });
@@ -17,7 +17,6 @@ class LocalArtists extends Model {
     });
   }
 
-  // Helper method to add artist types
   async addArtistTypes(artistTypeIds) {
     return await this.sequelize.models.LocalArtistsType.bulkCreate(
       artistTypeIds.map((artistTypeId) => ({
@@ -27,7 +26,6 @@ class LocalArtists extends Model {
     );
   }
 
-  // Helper method to update artist types
   async updateArtistTypes(artistTypeIds) {
     await this.sequelize.models.LocalArtistsType.destroy({
       where: { localArtistId: this.id },
@@ -35,7 +33,6 @@ class LocalArtists extends Model {
     return this.addArtistTypes(artistTypeIds);
   }
 
-  // Helper method to add images
   async addImages(images) {
     return await this.sequelize.models.LocalArtistsImage.bulkCreate(
       images.map((image) => ({
@@ -45,7 +42,6 @@ class LocalArtists extends Model {
     );
   }
 
-  // Helper method to update images
   async updateImages(imageUpdates) {
     const updates = imageUpdates.map(async (update) => {
       if (update.id) {
@@ -65,7 +61,6 @@ class LocalArtists extends Model {
     return Promise.all(updates);
   }
 
-  // Helper method to set featured image
   async setFeaturedImage(imageId) {
     await this.sequelize.models.LocalArtistsImage.update(
       { isFeatured: false },
@@ -100,11 +95,14 @@ LocalArtists.init(
       set(value) {
         this.setDataValue("name", value.trim());
         if (!this.slug) {
-          this.slug = slugify(value, {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
+          this.setDataValue(
+            "slug",
+            slugify(value, {
+              lower: true,
+              strict: true,
+              remove: /[*+~.()'"!:@]/g,
+            })
+          );
         }
       },
     },
@@ -129,6 +127,10 @@ LocalArtists.init(
       allowNull: false,
       validate: {
         notEmpty: { msg: "Phone number is required" },
+        is: {
+          args: /^\+?[\d\s-]+$/,
+          msg: "Invalid phone number format",
+        },
       },
     },
     email: {
@@ -165,6 +167,11 @@ LocalArtists.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    vistaVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
@@ -176,9 +183,8 @@ LocalArtists.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: { /* isActive: true */ },
     },
-
     hooks: {
       beforeValidate: (artist) => {
         if (artist.changed("name") || !artist.slug) {
