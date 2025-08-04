@@ -17,6 +17,7 @@ router.get("/", validate.list, controller.getAllGuides);
 router.get("/:id", validate.getById, controller.getGuideById);
 
 /* update  */
+router.put("/:id", validate.update, uploadMiddleware, controller.updateGuide);
 
 /* delete */
 router.delete("/:id", validate.delete, controller.deleteGuide);
