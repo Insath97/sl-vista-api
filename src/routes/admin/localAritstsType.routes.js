@@ -1,53 +1,30 @@
 const express = require("express");
 const router = express.Router();
 const validate = require("../../utils/validations/localArtistType.validation");
-const artistTypeController = require("../../controllers/admin/localArtistsType.controller");
-const authMiddleware = require("../../middlewares/auth.middleware");
+const controller = require("../../controllers/admin/localArtistsType.controller");
+const middleware = require("../../middlewares/auth.middleware");
 
-router.use(authMiddleware.authMiddlewareWithProfile(['admin']));
+router.use(middleware.authenticate);
 
-// Create artist type
-router.post("/", 
-  /* validate.create,  */
-  artistTypeController.createArtistType
-);
+/* create */
+router.post("/", validate.create, controller.createArtistType);
 
-// Get all artist types
-router.get("/", 
-/*   validate.list, */ 
-  artistTypeController.getAllArtistTypes
-);
+/* get all */
+router.get("/", validate.list, controller.getAllArtistTypes);
 
-// Get artist type by ID
-router.get("/:id", 
-  /* validate.getById, */ 
-  artistTypeController.getArtistTypeById
-);
+/* get by id */
+router.get("/:id", validate.getById, controller.getArtistTypeById);
 
-// Update artist type
-router.put("/:id", 
-  /* validate.update, */ 
-  artistTypeController.updateArtistType
-);
+/* update */
+router.put("/:id", validate.update, controller.updateArtistType);
 
-// Delete artist type
-router.delete("/:id", 
-/*   validate.delete,  */
-  artistTypeController.deleteArtistType
-);
+/* delete */
+router.delete("/:id", validate.delete, controller.deleteArtistType);
 
-// Restore soft-deleted artist type
-router.patch("/:id/restore", 
-  /* validate.restore, */ 
-  artistTypeController.restoreArtistType
-);
+/* restore */
+router.patch("/restore/:id", validate.restore, controller.restoreArtistType);
 
-// Toggle visibility status
-router.patch("/:id/toggle-visibility", 
-  /* validate.toggleVisibility, */ 
-  artistTypeController.toggleVisibility
-);
-
-
+/* active status */
+router.patch("/status/:id", validate.toggleVisibility, controller.toggleVisibility);
 
 module.exports = router;

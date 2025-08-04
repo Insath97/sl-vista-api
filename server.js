@@ -110,7 +110,7 @@ app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 app.use("/api/v1/admin/events", events);
 app.use("/api/v1/admin/activities", activites);
 app.use("/api/v1/admin/local-artists", localArtistRoutes);
-app.use("/api/v1/admin/local-artists-type", localArtistsType);
+app.use("/api/v1/admin/artist-type", localArtistsType);
 app.use("/api/v1/admin/guides", guidesRoutes);
 
 /* customer routes */

@@ -41,36 +41,15 @@ ArtistType.init(
       },
       set(value) {
         this.setDataValue("name", value.trim());
-        if (!this.slug) {
-          this.slug = slugify(value, {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
-        }
       },
-    },
-    slug: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      unique: {
-        msg: "This slug is already in use",
-      },
-      validate: {
-        is: {
-          args: /^[a-z0-9-]+$/,
-          msg: "Slug can only contain lowercase letters, numbers, and hyphens",
-        },
-        notEmpty: true,
-      },
-    },
-    isActive: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true,
     },
     description: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
     },
   },
   {
@@ -79,7 +58,7 @@ ArtistType.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: { },
     },
     scopes: {
       withInactive: {
@@ -88,18 +67,7 @@ ArtistType.init(
       forAdmin: {
         paranoid: false,
       },
-    },
-    hooks: {
-      beforeValidate: (artistType) => {
-        if (artistType.changed("name") || !artistType.slug) {
-          artistType.slug = slugify(artistType.name, {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
-        }
-      },
-    },
+    }
   }
 );
 

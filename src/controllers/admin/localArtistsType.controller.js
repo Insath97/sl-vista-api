@@ -1,6 +1,5 @@
 const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
-const slugify = require("slugify");
 const ArtistType = require("../../models/artistsType.model");
 
 /* Create artist type */
@@ -89,36 +88,7 @@ exports.updateArtistType = async (req, res) => {
         .json({ success: false, message: "Artist type not found" });
     }
 
-    const updateData = { ...req.body };
-
-    if (
-      updateData.name &&
-      !updateData.slug &&
-      updateData.name !== artistType.name
-    ) {
-      updateData.slug = slugify(updateData.name, {
-        lower: true,
-        strict: true,
-        remove: /[*+~.()'"!:@]/g,
-      });
-    }
-
-    if (updateData.slug) {
-      const existing = await ArtistType.findOne({
-        where: {
-          slug: updateData.slug,
-          id: { [Op.ne]: req.params.id },
-        },
-      });
-      if (existing) {
-        return res.status(400).json({
-          success: false,
-          message: "Slug is already in use by another artist type",
-        });
-      }
-    }
-
-    await artistType.update(updateData, { validate: true });
+    await artistType.update(req.body, { validate: true });
 
     return res.status(200).json({
       success: true,
