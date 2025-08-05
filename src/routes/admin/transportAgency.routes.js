@@ -5,7 +5,11 @@ const validate = require("../../utils/validations/transportAgency.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
-router.use(middleware.authMiddlewareWithProfile("admin"));
+// Public routes (no authentication required)
+router.get("/public", validate.list, controller.getAllTransportAgencies);
+router.get("/public/:id", validate.getById, controller.getTransportAgencyById);
+
+router.use(middleware.authenticate);
 
 // Create transport agency
 router.post(

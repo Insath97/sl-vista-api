@@ -103,8 +103,8 @@ app.use("/api/v1/properties", propertyRoutes);
 /* second listing */
 app.use("/api/v1/languages", languagesRoutes);
 app.use("/api/v1/admin/amenities", amenityRoutes);
-app.use("/api/v1/admin/transport-types", transportTypeRoutes);
-app.use("/api/v1/admin/transport-agencies", transportAgencyRoutes);
+app.use("/api/v1/transport-types", transportTypeRoutes);
+app.use("/api/v1/transport-agencies", transportAgencyRoutes);
 app.use("/api/v1/admin/shopping", shopping);
 app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 app.use("/api/v1/admin/events", events);
