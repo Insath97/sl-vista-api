@@ -5,6 +5,11 @@ const validate = require("../../utils/validations/localArtists.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
+/* public route */
+router.get("/", validate.list, controller.getAllLocalArtists);
+
+router.get("/:id", validate.getById, controller.getLocalArtistById);
+
 router.use(middleware.authenticate);
 
 // Create local artist
@@ -33,7 +38,7 @@ router.put(
 router.delete("/:id", validate.delete, controller.deleteLocalArtist);
 
 // Restore local artist
-router.patch("/restore/:id",controller.restoreLocalArtist);
+router.patch("/restore/:id", controller.restoreLocalArtist);
 
 // Toggle active status
 router.patch(

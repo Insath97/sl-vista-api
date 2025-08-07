@@ -6,8 +6,9 @@ const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 // Public routes (no authentication required)
-router.get("/public", validate.list, controller.getAllTransportAgencies);
-router.get("/public/:id", validate.getById, controller.getTransportAgencyById);
+router.get("/", validate.list, controller.getAllTransportAgencies);
+
+router.get("/:id", validate.getById, controller.getTransportAgencyById);
 
 router.use(middleware.authenticate);
 
@@ -37,10 +38,7 @@ router.put(
 router.delete("/:id", validate.delete, controller.deleteTransportAgency);
 
 // Restore transport agency
-router.patch(
-  "/restore/:id",
-  controller.restoreTransportAgency
-);
+router.patch("/restore/:id", controller.restoreTransportAgency);
 
 // Toggle active status
 router.patch(
@@ -74,11 +72,5 @@ router.delete(
   controller.deleteImage
 );
 
-// Set featured image
-router.patch(
-  "/:id/images/:imageId/featured",
-  validate.setFeaturedImage,
-  controller.setFeaturedImage
-);
 
 module.exports = router;

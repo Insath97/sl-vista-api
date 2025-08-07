@@ -5,10 +5,11 @@ const validate = require("../utils/validations/room.validation");
 const middleware = require("../middlewares/auth.middleware");
 const upload = require("../middlewares/uploadMiddleware");
 
+router.use(middleware.authenticate);
+
 /* create */
 router.post(
   "/",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   upload,
   validate.create,
   controller.createRoom
@@ -17,7 +18,6 @@ router.post(
 /* get all */
 router.get(
   "/",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   validate.list,
   controller.getAllRooms
 );
@@ -25,7 +25,6 @@ router.get(
 /* get by id */
 router.get(
   "/:id",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   validate.getById,
   controller.getRoomById
 );

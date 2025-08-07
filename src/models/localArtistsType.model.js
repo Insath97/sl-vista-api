@@ -32,7 +32,6 @@ LocalArtistsType.init(
     sequelize,
     tableName: "local_artists_types",
     timestamps: true,
-    paranoid: true,
     indexes: [
       {
         unique: true,

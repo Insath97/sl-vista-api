@@ -5,7 +5,7 @@ const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 const validate = require("../../utils/validations/homestay.validations");
 
-router.use(middleware.authMiddlewareWithProfile("merchant"));
+router.use(middleware.authenticate);
 
 /* create homestay */
 router.post("/", uploadMiddleware, validate.create, controller.createHomeStay);

@@ -74,7 +74,6 @@ Activities.init(
       allowNull: false,
       set(value) {
         this.setDataValue("title", value.trim());
-
         const slug = slugify(value, {
           lower: true,
           strict: true,
@@ -155,6 +154,10 @@ Activities.init(
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
+    },
+    scopes: {
+      withInactive: { where: {} },
+      forAdmin: { paranoid: false },
     },
     hooks: {
       beforeValidate: (activity) => {

@@ -225,25 +225,35 @@ exports.toggleVisibility = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
 
   try {
-    const transportType = await TransportType.findByPk(req.params.id);
+    // Use the 'withInactive' scope to find both active and inactive transport types
+    const transportType = await TransportType.scope("withInactive").findByPk(
+      req.params.id
+    );
+
     if (!transportType) {
       return res.status(404).json({
         success: false,
-        message: "Transport type not found",
+        message: "Transport type not found (including inactive)",
       });
     }
 
     await transportType.toggleVisibility();
+
     return res.status(200).json({
       success: true,
       message: "Transport type visibility toggled",
-      data: transportType,
+      data: {
+        id: transportType.id,
+        name: transportType.name,
+        isActive: transportType.isActive,
+      },
     });
   } catch (error) {
     console.error("Error toggling transport type visibility:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to toggle visibility",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

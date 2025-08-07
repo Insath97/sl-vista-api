@@ -165,7 +165,7 @@ module.exports = {
   getById: [idParam, query("includeDeleted").optional().isBoolean()],
   delete: [idParam],
   list: queryValidations,
-  toggleStatus: [idParam],
+  toggleStatus: [param("id").isInt().withMessage("Invalid activity ID")],
   restore: [idParam],
   updateImages: updateImagesValidation,
   deleteImage: deleteImageValidation,

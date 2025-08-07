@@ -78,6 +78,12 @@ class TransportAgency extends Model {
 
     return await image.update({ isFeatured: true });
   }
+
+  async toggleVisibility() {
+    this.isActive = !this.isActive;
+    await this.save();
+    return this;
+  }
 }
 
 TransportAgency.init(
@@ -183,6 +189,10 @@ TransportAgency.init(
     paranoid: true,
     defaultScope: {
       where: { isActive: true },
+    },
+    scopes: {
+      withInactive: { where: {} },
+      forAdmin: { paranoid: false },
     },
   }
 );

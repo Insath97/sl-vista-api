@@ -3,9 +3,8 @@ const router = express.Router();
 const controller = require("../controllers/role.controller");
 const validate = require("../utils/validations/role.validation");
 const middleware = require("../middlewares/auth.middleware");
-const { route } = require("./languagesRoutes");
 
-router.use(middleware.authMiddlewareWithProfile(["admin"]));
+router.use(middleware.authenticate);
 
 // create role
 router.post("/", validate.create, controller.createRole);

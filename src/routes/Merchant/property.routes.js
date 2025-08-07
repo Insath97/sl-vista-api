@@ -6,7 +6,7 @@ const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
 // Apply authentication middleware to all routes
-router.use(middleware.authMiddlewareWithProfile("merchant"));
+router.use(middleware.authenticate);
 
 // Create property
 router.post("/", uploadMiddleware, validate.create, controller.createProperty);

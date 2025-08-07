@@ -4,7 +4,7 @@ const CustomerAuthController = require("../../controllers/Customer/customer.cont
 const CustomerValidation = require("../../utils/validations/customer.validations");
 const middleware = require("../../middlewares/auth.middleware");
 
-router.use(middleware.authMiddlewareWithProfile("admin"));
+router.use(middleware.authenticate);
 
 router.get(
   "/",

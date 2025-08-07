@@ -27,7 +27,7 @@ router.get(
 /* get all transport with images & amenties */
 router.get(
   "/transport-agencies",
-  validateTransportAgency.list,
+/*   validateTransportAgency.list, */
   transportAgencyController.getAllTransportAgencies
 );
 

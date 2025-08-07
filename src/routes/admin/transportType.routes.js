@@ -4,7 +4,15 @@ const validate = require("../../utils/validations/transportType.validation");
 const transportTypeController = require("../../controllers/admin/transporttype.controller");
 const middleware = require("../../middlewares/auth.middleware");
 
-router.use(middleware.authMiddlewareWithProfile("admin"));
+router.get("/", validate.list, transportTypeController.getAllTransportTypes);
+
+router.get(
+  "/:id",
+  validate.getById,
+  transportTypeController.getTransportTypeById
+);
+
+router.use(middleware.authenticate);
 
 router.post("/", validate.create, transportTypeController.createTransportType);
 

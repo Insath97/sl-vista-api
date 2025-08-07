@@ -102,15 +102,12 @@ exports.getAllLocalArtists = async (req, res) => {
       isActive,
       vistaVerified,
       includeDeleted,
-      includeImages,
-      includeTypes,
       page = 1,
       limit = 10,
       search,
       city,
       district,
       province,
-      artistTypeId,
     } = req.query;
 
     const where = {};
@@ -143,23 +140,6 @@ exports.getAllLocalArtists = async (req, res) => {
         { specialization: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
       ];
-    }
-
-    if (includeTypes === "true") {
-      include.push({
-        model: ArtistType,
-        as: "artistTypes",
-        through: { attributes: [] },
-        ...(artistTypeId && { where: { id: artistTypeId } }),
-      });
-    }
-
-    if (includeImages === "true") {
-      include.push({
-        model: LocalArtistImage,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
     }
 
     const options = {
@@ -247,7 +227,7 @@ exports.getLocalArtistById = async (req, res) => {
   }
 };
 
-// Update Local Artist
+/* Update local artist with precise image control */
 exports.updateLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -263,23 +243,7 @@ exports.updateLocalArtist = async (req, res) => {
       });
     }
 
-    const { artistTypes, images: bodyImages, ...updateData } = req.body;
-    let newImages = [];
-
-    // Handle file uploads
-    const uploadedImages = await handleImageUploads(req.files, artist.id);
-    newImages = [...uploadedImages];
-
-    // Handle body images
-    if (bodyImages?.length) {
-      newImages = [
-        ...newImages,
-        ...bodyImages.map((img) => ({
-          ...img,
-          s3Key: img.s3Key || null,
-        })),
-      ];
-    }
+    const { artistTypes, images: imageUpdates = [], ...updateData } = req.body;
 
     // Update slug if name changed
     if (
@@ -299,25 +263,64 @@ exports.updateLocalArtist = async (req, res) => {
       await artist.updateArtistTypes(artistTypes);
     }
 
-    // Update images
-    if (newImages.length > 0) {
-      await artist.updateImages(newImages);
+    // Handle image updates if provided
+    if (Array.isArray(imageUpdates)) {
+      // Get current images from database
+      const currentImages = await artist.getImages();
+
+      // Separate images into different operations
+      const imagesToKeep = imageUpdates.filter((img) => img.id); // Existing images to keep/update
+      const imagesToAdd = imageUpdates.filter((img) => !img.id); // New images to add
+      const imagesToDelete = currentImages.filter(
+        (dbImage) =>
+          !imageUpdates.some((updateImg) => updateImg.id === dbImage.id)
+      );
+
+      // 1. Delete images that were removed (from DB and S3) - HARD DELETE
+      if (imagesToDelete.length > 0) {
+        const s3KeysToDelete = imagesToDelete
+          .map((img) => img.s3Key)
+          .filter((key) => key);
+
+        if (s3KeysToDelete.length > 0) {
+          await UploadService.deleteMultipleFiles(s3KeysToDelete);
+        }
+
+        await LocalArtistImage.destroy({
+          where: { id: imagesToDelete.map((img) => img.id) },
+          force: true, // Hard delete
+        });
+      }
+
+      // 2. Update existing images (metadata changes)
+      await artist.updateImages(imagesToKeep);
+
+      // 3. Add new images (file uploads + DB records)
+      const uploadedImages = await handleImageUploads(req.files, artist.id);
+      const allNewImages = [...imagesToAdd, ...uploadedImages];
+
+      if (allNewImages.length > 0) {
+        await artist.addImages(allNewImages);
+      }
     }
 
+    // Update artist data
     await artist.update(updateData);
 
-    // Fetch updated artist
+    // Fetch updated artist with associations
     const updatedArtist = await LocalArtists.findByPk(artist.id, {
       include: [
         {
           model: ArtistType,
           as: "artistTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: LocalArtistImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "caption", "isFeatured", "sortOrder"],
         },
       ],
     });
@@ -462,7 +465,9 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 
   try {
-    const artist = await LocalArtists.findByPk(req.params.id);
+    const artist = await LocalArtists.scope("withInactive").findByPk(
+      req.params.id
+    );
     if (!artist) {
       return res.status(404).json({
         success: false,

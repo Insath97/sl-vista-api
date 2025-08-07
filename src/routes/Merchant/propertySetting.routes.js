@@ -5,7 +5,7 @@ const validate = require("../../utils/validations/propertySetting.validation");
 const middleware = require("../../middlewares/auth.middleware");
 
 // Apply authentication middleware to all routes
-router.use(middleware.authMiddlewareWithProfile("merchant"));
+router.use(middleware.authenticate);
 
 // Create property settings
 router.post(

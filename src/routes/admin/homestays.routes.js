@@ -4,7 +4,7 @@ const controller = require("../../controllers/Merchant/homestay.controller");
 const validate = require("../../utils/validations/homestay.validations");
 const middleware = require("../../middlewares/auth.middleware");
 
-router.use(middleware.authMiddlewareWithProfile("admin"));
+router.use(middleware.authenticate);
 
 /* Get All Homestays list fo Admin */
 

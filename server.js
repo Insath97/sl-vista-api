@@ -37,7 +37,6 @@ const roleRoutes = require("./src/routes/roles.routes");
 const userRoutes = require("./src/routes/user.routes");
 const roomtypeRoutes = require("./src/routes/roomType.routes");
 const roomRoutes = require("./src/routes/room.routes");
-
 const merchantRoutes = require("./src/routes/merchant.routes");
 const propertyRoutes = require("./src/routes/property.routes");
 
@@ -71,8 +70,37 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
+/*
+  ======================
+   Route Configuration
+  ====================== 
+*/
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/languages", languagesRoutes);
+app.use("/api/v1/amenities", amenityRoutes);
+app.use("/api/v1/transport-types", transportTypeRoutes);
+app.use("/api/v1/transport-agencies", transportAgencyRoutes);
+app.use("/api/v1/artist-type", localArtistsType);
+app.use("/api/v1/local-artists", localArtistRoutes);
+app.use("/api/v1/activities", activites);
+app.use("/api/v1/events", events);
+
 app.use("/api/v1/admins", adminRoutes);
+
+// 1st api
+app.get("/", (req, res) => {
+  res.send(`Welcome to Travel Vista API. Base URL: ${app_url}`);
+});
+
+// Routes
+
+/* second listing */
+
+app.use("/api/v1/admin/shopping", shopping);
+app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
+
+
+app.use("/api/v1/admin/guides", guidesRoutes);
 
 // admin
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
@@ -94,39 +122,20 @@ app.use("/api/v1/room-type", roomtypeRoutes);
 /* app.use("/api/v1/rooms", roomRoutes); */
 
 /* auth */
-app.use("/api/v1/auth", authRoutes);
 
 /* merchant registration and other admin level routes */
 app.use("/api/v1/", merchantRoutes);
 app.use("/api/v1/properties", propertyRoutes);
-
-/* second listing */
-app.use("/api/v1/languages", languagesRoutes);
-app.use("/api/v1/admin/amenities", amenityRoutes);
-app.use("/api/v1/transport-types", transportTypeRoutes);
-app.use("/api/v1/transport-agencies", transportAgencyRoutes);
-app.use("/api/v1/admin/shopping", shopping);
-app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
-app.use("/api/v1/admin/events", events);
-app.use("/api/v1/admin/activities", activites);
-app.use("/api/v1/admin/local-artists", localArtistRoutes);
-app.use("/api/v1/admin/artist-type", localArtistsType);
-app.use("/api/v1/admin/guides", guidesRoutes);
 
 /* customer routes */
 app.use("/api/v1/customer", customerRegistrationRoutes);
 app.use("/api/v1/customer/list", customerHomeroutes);
 app.use("/api/v1/booking", bookingRoutes);
 
-// 1st api
-app.get("/", (req, res) => {
-  res.send(`Welcome to Travel Vista API. Base URL: ${app_url}`);
-});
-
 // Sync database and start server
 sequelize
   .sync({
-    alter: true,
+    /*     alter: true, */
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");

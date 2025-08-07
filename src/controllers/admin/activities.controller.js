@@ -57,6 +57,7 @@ exports.createActivity = async (req, res) => {
           model: ActivitiesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "activityId", "imageUrl", "fileName"],
         },
       ],
     });
@@ -102,6 +103,7 @@ exports.getAllActivities = async (req, res) => {
         model: ActivitiesImages,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "activityId", "imageUrl", "fileName"],
       },
     ];
 
@@ -169,6 +171,7 @@ exports.getActivityById = async (req, res) => {
           model: ActivitiesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "activityId", "imageUrl", "fileName"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -257,6 +260,7 @@ exports.updateActivity = async (req, res) => {
           model: ActivitiesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "activityId", "imageUrl", "fileName"],
         },
       ],
     });
@@ -358,6 +362,7 @@ exports.restoreActivity = async (req, res) => {
           model: ActivitiesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "activityId", "imageUrl", "fileName"],
         },
       ],
     });
@@ -385,7 +390,9 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 
   try {
-    const activity = await Activities.findByPk(req.params.id);
+    const activity = await Activities.scope("withInactive").findByPk(
+      req.params.id
+    );
     if (!activity) {
       return res.status(404).json({
         success: false,

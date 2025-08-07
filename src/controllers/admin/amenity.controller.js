@@ -26,8 +26,6 @@ exports.createAmenity = async (req, res) => {
   }
 };
 
-
-
 // Get all amenities with advanced filtering
 exports.getAllAmenities = async (req, res) => {
   try {
@@ -35,26 +33,32 @@ exports.getAllAmenities = async (req, res) => {
       includeInactive,
       search,
       language_code,
-      sortBy = 'name',  // Changed from 'position' to 'name' as default
-      sortOrder = 'ASC',
+      sortBy = "name", // Changed from 'position' to 'name' as default
+      sortOrder = "ASC",
       page = 1,
-      pageSize = 10
+      pageSize = 10,
     } = req.query;
 
     // Validate sortBy to prevent SQL injection
-    const validSortFields = ['name', 'slug', 'isActive', 'createdAt', 'updatedAt'];
-    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'name';
+    const validSortFields = [
+      "name",
+      "slug",
+      "isActive",
+      "createdAt",
+      "updatedAt",
+    ];
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : "name";
 
     // Build where clause
     const where = {};
-    
+
     if (language_code) {
       where.language_code = language_code;
     }
-    
+
     if (search) {
       where.name = {
-        [Op.iLike]: `%${search}%`  // Case-insensitive search
+        [Op.iLike]: `%${search}%`, // Case-insensitive search
       };
     }
 
@@ -76,22 +80,22 @@ exports.getAllAmenities = async (req, res) => {
       includeInactive === "true" ? "withInactive" : null
     ).count({ where });
 
-    return res.status(200).json({ 
-      success: true, 
+    return res.status(200).json({
+      success: true,
       data: amenities,
       pagination: {
         page: parseInt(page),
         pageSize: parseInt(pageSize),
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize)
-      }
+        totalPages: Math.ceil(totalCount / pageSize),
+      },
     });
   } catch (error) {
     console.error("Error fetching amenities:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch amenities",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -250,24 +254,33 @@ exports.toggleVisibility = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
 
   try {
-    const amenity = await Amenity.findByPk(req.params.id);
+    // Remove default scope to find both active and inactive amenities
+    const amenity = await Amenity.scope("withInactive").findByPk(req.params.id);
+
     if (!amenity) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Amenity not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Amenity not found (including inactive)",
+      });
     }
 
     await amenity.toggleVisibility();
+
     return res.status(200).json({
       success: true,
       message: "Amenity visibility toggled",
-      data: amenity,
+      data: {
+        id: amenity.id,
+        name: amenity.name,
+        isActive: amenity.isActive,
+      },
     });
   } catch (error) {
     console.error("Error toggling amenity visibility:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to toggle visibility",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

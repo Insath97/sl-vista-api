@@ -5,22 +5,17 @@ const propertiesController = require("../controllers/Merchant/property.controlle
 const homestaycontroller = require("../controllers/Merchant/homestay.controller");
 const validate = require("../utils/validations/homestay.validations");
 
+router.use(middleware.authenticate);
+
 router.get(
   "/properties/approved-dropdown",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   propertiesController.getApprovedPropertiesForDropdown
 );
 
-router.get(
-  "/homestays",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]), // Accepts both roles
-  validate.list,
-  homestaycontroller.getAllHomeStays
-);
+router.get("/homestays", validate.list, homestaycontroller.getAllHomeStays);
 
 router.get(
   "/homestays/:id",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   homestaycontroller.getHomeStayByIdForAdminAndMerchant
 );
 

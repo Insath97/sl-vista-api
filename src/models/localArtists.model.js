@@ -75,6 +75,12 @@ class LocalArtists extends Model {
 
     return await image.update({ isFeatured: true });
   }
+
+  async toggleVisibility() {
+    this.isActive = !this.isActive;
+    await this.save();
+    return this;
+  }
 }
 
 LocalArtists.init(
@@ -153,14 +159,10 @@ LocalArtists.init(
       allowNull: true,
     },
     website: {
-      type: DataTypes.TEXT,
+      type: DataTypes.STRING(255),
       allowNull: true,
       validate: {
-        isUrl: {
-          msg: "Invalid website URL",
-          protocols: ["http", "https"],
-          require_protocol: true,
-        },
+        isUrl: { msg: "Invalid website URL" },
       },
     },
     description: {
@@ -183,7 +185,11 @@ LocalArtists.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { /* isActive: true */ },
+      where: { isActive: true },
+    },
+    scopes: {
+      withInactive: { where: {} },
+      forAdmin: { paranoid: false },
     },
     hooks: {
       beforeValidate: (artist) => {

@@ -64,11 +64,13 @@ exports.createTransportAgency = async (req, res) => {
           model: TransportType,
           as: "transportTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: TransportAgencyImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl"],
         },
       ],
     });
@@ -100,8 +102,6 @@ exports.getAllTransportAgencies = async (req, res) => {
       isActive,
       vistaVerified,
       includeDeleted,
-      includeImages,
-      includeTypes,
       page = 1,
       limit = 10,
       search,
@@ -116,29 +116,15 @@ exports.getAllTransportAgencies = async (req, res) => {
         model: TransportType,
         as: "transportTypes",
         through: { attributes: [] },
+        attributes: ["id", "name"],
       },
       {
         model: TransportAgencyImage,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl"],
       },
     ];
-
-    if (includeTypes === "true") {
-      include.push({
-        model: TransportType,
-        as: "transportTypes",
-        through: { attributes: [] },
-      });
-    }
-
-    if (includeImages === "true") {
-      include.push({
-        model: TransportAgencyImage,
-        as: "images",
-        order: [["sortOrder", "ASC"]],
-      });
-    }
 
     // Filter conditions
     if (isActive !== undefined) where.isActive = isActive === "true";
@@ -207,11 +193,13 @@ exports.getTransportAgencyById = async (req, res) => {
           model: TransportType,
           as: "transportTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: TransportAgencyImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -240,7 +228,7 @@ exports.getTransportAgencyById = async (req, res) => {
   }
 };
 
-/* Update transport agency */
+/* Update transport agency with precise image control */
 exports.updateTransportAgency = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -256,23 +244,11 @@ exports.updateTransportAgency = async (req, res) => {
       });
     }
 
-    const { transportTypes, images: bodyImages, ...updateData } = req.body;
-    let newImages = [];
-
-    // Handle file uploads
-    const uploadedImages = await handleImageUploads(req.files, agency.id);
-    newImages = [...uploadedImages];
-
-    // Handle body images
-    if (bodyImages?.length) {
-      newImages = [
-        ...newImages,
-        ...bodyImages.map((img) => ({
-          ...img,
-          s3Key: img.s3Key || null,
-        })),
-      ];
-    }
+    const {
+      transportTypes,
+      images: imageUpdates = [],
+      ...updateData    
+    } = req.body;
 
     // Update slug if title changed
     if (
@@ -292,28 +268,64 @@ exports.updateTransportAgency = async (req, res) => {
       await agency.updateTransportTypes(transportTypes);
     }
 
-    // Update images
-    if (newImages.length > 0) {
-      await TransportAgencyImage.destroy({
-        where: { transportAgencyId: agency.id },
-      });
-      await TransportAgencyImage.bulkCreate(newImages);
+    // Handle image updates if provided
+    if (Array.isArray(imageUpdates)) {
+      // Get current images from database
+      const currentImages = await agency.getImages();
+
+      // Separate images into different operations
+      const imagesToKeep = imageUpdates.filter((img) => img.id); // Existing images to keep/update
+      const imagesToAdd = imageUpdates.filter((img) => !img.id); // New images to add
+      const imagesToDelete = currentImages.filter(
+        (dbImage) =>
+          !imageUpdates.some((updateImg) => updateImg.id === dbImage.id)
+      );
+
+      // 1. Delete images that were removed (from DB and S3)
+      if (imagesToDelete.length > 0) {
+        const s3KeysToDelete = imagesToDelete
+          .map((img) => img.s3Key)
+          .filter((key) => key);
+
+        if (s3KeysToDelete.length > 0) {
+          await UploadService.deleteMultipleFiles(s3KeysToDelete);
+        }
+
+        await TransportAgencyImage.destroy({
+          where: { id: imagesToDelete.map((img) => img.id) },
+          force: true,
+        });
+      }
+
+      // 2. Update existing images (metadata changes)
+      await agency.updateImages(imagesToKeep);
+
+      // 3. Add new images (file uploads + DB records)
+      const uploadedImages = await handleImageUploads(req.files, agency.id);
+      const allNewImages = [...imagesToAdd, ...uploadedImages];
+
+      if (allNewImages.length > 0) {
+        await agency.addImages(allNewImages);
+      }
     }
 
+    // Update agency data
     await agency.update(updateData);
 
-    // Fetch updated agency
+    // Fetch updated agency with associations
     const updatedAgency = await TransportAgency.findByPk(agency.id, {
       include: [
         {
           model: TransportType,
           as: "transportTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: TransportAgencyImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "caption", "isFeatured", "sortOrder"],
         },
       ],
     });
@@ -415,11 +427,13 @@ exports.restoreTransportAgency = async (req, res) => {
           model: TransportType,
           as: "transportTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: TransportAgencyImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl"],
         },
       ],
     });
@@ -447,7 +461,7 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 
   try {
-    const agency = await TransportAgency.findByPk(req.params.id);
+    const agency = await TransportAgency.scope("withInactive").findByPk(req.params.id);
     if (!agency) {
       return res.status(404).json({
         success: false,
@@ -455,7 +469,7 @@ exports.toggleActiveStatus = async (req, res) => {
       });
     }
 
-    await agency.update({ isActive: !agency.isActive });
+    await agency.toggleVisibility();
 
     return res.status(200).json({
       success: true,

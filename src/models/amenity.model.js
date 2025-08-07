@@ -25,7 +25,8 @@ class Amenity extends Model {
 
   async toggleVisibility() {
     this.isActive = !this.isActive;
-    return await this.save();
+    await this.save();
+    return this;
   }
 }
 

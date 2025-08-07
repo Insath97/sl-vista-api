@@ -4,7 +4,7 @@ const controller = require("../../controllers/Merchant/property.controller");
 const validate = require("../../utils/validations/property.validation");
 const middleware = require("../../middlewares/auth.middleware");
 
-router.use(middleware.authMiddlewareWithProfile("admin"));
+router.use(middleware.authenticate);
 
 /* Get all merchant properties */
 router.get("/", validate.list, controller.getAllMerchantProperties);

@@ -4,6 +4,13 @@ const validate = require("../../utils/validations/localArtistType.validation");
 const controller = require("../../controllers/admin/localArtistsType.controller");
 const middleware = require("../../middlewares/auth.middleware");
 
+/* get all */
+router.get("/", validate.list, controller.getAllArtistTypes);
+
+/* get by id */
+router.get("/:id", validate.getById, controller.getArtistTypeById);
+
+/* authenticate */
 router.use(middleware.authenticate);
 
 /* create */

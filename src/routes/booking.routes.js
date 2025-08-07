@@ -4,10 +4,11 @@ const middleware = require("../middlewares/auth.middleware");
 const controller = require("../controllers/booking.controller");
 const validate = require("../utils/validations/booking.validations");
 
+router.use(middleware.authenticate);
+
 /* Create booking */
 router.post(
   "/",
-  middleware.authMiddleware,
   validate.createBookingValidation,
   controller.createBooking
 );
@@ -15,7 +16,6 @@ router.post(
 /* Get all bookings */
 router.get(
   "/",
-  middleware.authMiddlewareWithProfile(["admin", "merchant"]),
   validate.listBookingsValidation,
   controller.getAllBookings
 );

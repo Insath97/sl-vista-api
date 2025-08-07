@@ -320,7 +320,7 @@ module.exports = {
   list: queryValidations,
 
   // Toggle Active Status
-  toggleStatus: [idParam],
+  toggleStatus: [param("id").isInt().withMessage("Invalid local artist ID")],
 
   // Restore Soft-deleted Local Artist
   restore: [idParam],

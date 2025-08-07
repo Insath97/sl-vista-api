@@ -295,7 +295,7 @@ module.exports = {
   list: queryValidations,
 
   // Toggle Active Status
-  toggleStatus: [idParam],
+  toggleStatus: [param("id").isInt().withMessage("Invalid amenity ID")],
 
   // Restore Soft-deleted Transport Agency
   restore: [idParam],
