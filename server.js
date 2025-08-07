@@ -99,7 +99,6 @@ app.get("/", (req, res) => {
 app.use("/api/v1/admin/shopping", shopping);
 app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 
-
 app.use("/api/v1/admin/guides", guidesRoutes);
 
 // admin
@@ -135,7 +134,7 @@ app.use("/api/v1/booking", bookingRoutes);
 // Sync database and start server
 sequelize
   .sync({
-    /*     alter: true, */
+    alter: true,
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
