@@ -227,7 +227,7 @@ exports.getLocalArtistById = async (req, res) => {
   }
 };
 
-/* Update local artist with precise image control */
+// Update Local Artist
 exports.updateLocalArtist = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -235,7 +235,21 @@ exports.updateLocalArtist = async (req, res) => {
   }
 
   try {
-    const artist = await LocalArtists.findByPk(req.params.id);
+    // Fetch artist with its images
+    const artist = await LocalArtists.findByPk(req.params.id, {
+      include: [
+        {
+          model: LocalArtistImage,
+          as: "images",
+        },
+        {
+          model: ArtistType,
+          as: "artistTypes",
+          through: { attributes: [] },
+        },
+      ],
+    });
+
     if (!artist) {
       return res.status(404).json({
         success: false,
@@ -243,7 +257,23 @@ exports.updateLocalArtist = async (req, res) => {
       });
     }
 
-    const { artistTypes, images: imageUpdates = [], ...updateData } = req.body;
+    const { artistTypes, images: bodyImages, ...updateData } = req.body;
+    let newImages = [];
+
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, artist.id);
+    newImages = [...uploadedImages];
+
+    // Handle body images
+    if (bodyImages?.length) {
+      newImages = [
+        ...newImages,
+        ...bodyImages.map((img) => ({
+          ...img,
+          s3Key: img.s3Key || null,
+        })),
+      ];
+    }
 
     // Update slug if name changed
     if (
@@ -258,56 +288,41 @@ exports.updateLocalArtist = async (req, res) => {
       });
     }
 
+    // Get existing image keys before deleting
+    const existingImageKeys = artist.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete existing images from S3 if they exist
+    if (existingImageKeys.length > 0) {
+      try {
+        if (existingImageKeys.length === 1) {
+          await UploadService.deleteFile(existingImageKeys[0]);
+        } else {
+          await UploadService.deleteMultipleFiles(existingImageKeys);
+        }
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+      }
+    }
+
     // Update artist types if provided
     if (artistTypes) {
-      await artist.updateArtistTypes(artistTypes);
+      await artist.setArtistTypes(artistTypes);
     }
 
-    // Handle image updates if provided
-    if (Array.isArray(imageUpdates)) {
-      // Get current images from database
-      const currentImages = await artist.getImages();
-
-      // Separate images into different operations
-      const imagesToKeep = imageUpdates.filter((img) => img.id); // Existing images to keep/update
-      const imagesToAdd = imageUpdates.filter((img) => !img.id); // New images to add
-      const imagesToDelete = currentImages.filter(
-        (dbImage) =>
-          !imageUpdates.some((updateImg) => updateImg.id === dbImage.id)
-      );
-
-      // 1. Delete images that were removed (from DB and S3) - HARD DELETE
-      if (imagesToDelete.length > 0) {
-        const s3KeysToDelete = imagesToDelete
-          .map((img) => img.s3Key)
-          .filter((key) => key);
-
-        if (s3KeysToDelete.length > 0) {
-          await UploadService.deleteMultipleFiles(s3KeysToDelete);
-        }
-
-        await LocalArtistImage.destroy({
-          where: { id: imagesToDelete.map((img) => img.id) },
-          force: true, // Hard delete
-        });
-      }
-
-      // 2. Update existing images (metadata changes)
-      await artist.updateImages(imagesToKeep);
-
-      // 3. Add new images (file uploads + DB records)
-      const uploadedImages = await handleImageUploads(req.files, artist.id);
-      const allNewImages = [...imagesToAdd, ...uploadedImages];
-
-      if (allNewImages.length > 0) {
-        await artist.addImages(allNewImages);
-      }
-    }
-
-    // Update artist data
+    // Update the main record
     await artist.update(updateData);
 
-    // Fetch updated artist with associations
+    // Update images
+    if (newImages.length > 0) {
+      await LocalArtistImage.destroy({
+        where: { localArtistId: artist.id },
+        force: true,
+      });
+      await LocalArtistImage.bulkCreate(newImages);
+    }
+
     const updatedArtist = await LocalArtists.findByPk(artist.id, {
       include: [
         {
@@ -320,7 +335,7 @@ exports.updateLocalArtist = async (req, res) => {
           model: LocalArtistImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
-          attributes: ["id", "imageUrl", "caption", "isFeatured", "sortOrder"],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
