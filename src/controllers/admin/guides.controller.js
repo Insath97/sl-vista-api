@@ -32,19 +32,7 @@ exports.createGuide = async (req, res) => {
   }
 
   try {
-    const guideData = req.body;
-
-    // Handle array fields
-    if (guideData.languages && typeof guideData.languages === "string") {
-      guideData.languages = guideData.languages
-        .split(",")
-        .map((lang) => lang.trim());
-    }
-    if (guideData.specialties && typeof guideData.specialties === "string") {
-      guideData.specialties = guideData.specialties
-        .split(",")
-        .map((spec) => spec.trim());
-    }
+    const { ...guideData } = req.body;
 
     // Generate slug if not provided
     if (!guideData.slug && guideData.guide_name) {
@@ -69,6 +57,7 @@ exports.createGuide = async (req, res) => {
           model: GuidesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -118,6 +107,7 @@ exports.getAllGuides = async (req, res) => {
         model: GuidesImages,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
       },
     ];
 
@@ -197,6 +187,7 @@ exports.getGuideById = async (req, res) => {
           model: GuidesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -244,18 +235,6 @@ exports.updateGuide = async (req, res) => {
     const { images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    // Handle array fields
-    if (updateData.languages && typeof updateData.languages === "string") {
-      updateData.languages = updateData.languages
-        .split(",")
-        .map((lang) => lang.trim());
-    }
-    if (updateData.specialties && typeof updateData.specialties === "string") {
-      updateData.specialties = updateData.specialties
-        .split(",")
-        .map((spec) => spec.trim());
-    }
-
     // Handle file uploads
     const uploadedImages = await handleImageUploads(req.files, guide.id);
     newImages = [...uploadedImages];
@@ -284,12 +263,16 @@ exports.updateGuide = async (req, res) => {
       });
     }
 
+    await guide.update(updateData);
+
     // Update images
     if (newImages.length > 0) {
-      await guide.updateImages(newImages);
+      await GuidesImages.destroy({
+        where: { guideId: guide.id },
+        force: true,
+      });
+      await GuidesImages.bulkCreate(newImages);
     }
-
-    await guide.update(updateData);
 
     const updatedGuide = await Guides.findByPk(guide.id, {
       include: [
@@ -297,6 +280,7 @@ exports.updateGuide = async (req, res) => {
           model: GuidesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -398,6 +382,7 @@ exports.restoreGuide = async (req, res) => {
           model: GuidesImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });

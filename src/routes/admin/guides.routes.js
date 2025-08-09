@@ -5,6 +5,12 @@ const validate = require("../../utils/validations/guides.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
+/* get all routes */
+router.get("/", validate.list, controller.getAllGuides);
+
+/* get by id */
+router.get("/:id", validate.getById, controller.getGuideById);
+
 router.use(middleware.authenticate);
 
 /* create route */
@@ -17,7 +23,7 @@ router.get("/", validate.list, controller.getAllGuides);
 router.get("/:id", validate.getById, controller.getGuideById);
 
 /* update  */
-router.put("/:id", validate.update, uploadMiddleware, controller.updateGuide);
+router.put("/:id", uploadMiddleware, validate.update, controller.updateGuide);
 
 /* delete */
 router.delete("/:id", validate.delete, controller.deleteGuide);

@@ -48,7 +48,9 @@ const guideValidations = [
     .optional()
     .custom((value) => {
       if (Array.isArray(value)) {
-        return value.every((lang) => typeof lang === "string" && lang.length <= 50);
+        return value.every(
+          (lang) => typeof lang === "string" && lang.length <= 50
+        );
       }
       return true;
     })
@@ -59,7 +61,16 @@ const guideValidations = [
     .notEmpty()
     .withMessage("Licence ID is required")
     .isLength({ max: 100 })
-    .withMessage("Licence ID must be less than 100 characters"),
+    .withMessage("Licence ID must be less than 100 characters")
+    .custom(async (value, { req }) => {
+      const where = {
+        licenceId: value,
+        [Op.not]: { id: req.params?.id || 0 },
+      };
+      const existingGuide = await Guides.findOne({ where });
+      if (existingGuide) throw new Error("Licence ID already in use");
+      return true;
+    }),
 
   body("expiryDate")
     .isDate()
@@ -86,11 +97,15 @@ const guideValidations = [
     .optional()
     .custom((value) => {
       if (Array.isArray(value)) {
-        return value.every((spec) => typeof spec === "string" && spec.length <= 100);
+        return value.every(
+          (spec) => typeof spec === "string" && spec.length <= 100
+        );
       }
       return true;
     })
-    .withMessage("Specialties must be an array of strings (max 100 chars each)"),
+    .withMessage(
+      "Specialties must be an array of strings (max 100 chars each)"
+    ),
 
   body("ratePerDayAmount")
     .isFloat({ min: 0 })
@@ -310,11 +325,34 @@ module.exports = {
   ],
 
   // Update Guide
+  // Update Guide validation
   update: [
     idParam,
     validateName.optional(),
     validateSlug,
-    ...guideValidations.map((v) => v.optional()),
+    ...guideValidations.map((v) => {
+      // Make licenceId validation optional for update, but validate if provided
+      if (v === guideValidations.find((v) => v.field === "licenceId")) {
+        return body("licenceId")
+          .optional()
+          .trim()
+          .notEmpty()
+          .withMessage("Licence ID is required")
+          .isLength({ max: 100 })
+          .withMessage("Licence ID must be less than 100 characters")
+          .custom(async (value, { req }) => {
+            if (!value) return true; // Skip if not provided
+            const where = {
+              licenceId: value,
+              [Op.not]: { id: req.params?.id || 0 },
+            };
+            const existingGuide = await Guides.findOne({ where });
+            if (existingGuide) throw new Error("Licence ID already in use");
+            return true;
+          });
+      }
+      return v.optional();
+    }),
     ...imageValidations.map((v) => v.optional()),
   ],
 
