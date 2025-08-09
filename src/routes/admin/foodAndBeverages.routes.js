@@ -5,6 +5,12 @@ const validate = require("../../utils/validations/foodAndBeverage.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
+// Get all food and beverages
+router.get("/", validate.list, controller.getAllFoodAndBeverages);
+
+// Get food and beverage by ID
+router.get("/:id", validate.getById, controller.getFoodAndBeverageById);
+
 router.use(middleware.authenticate);
 
 // Create food and beverage

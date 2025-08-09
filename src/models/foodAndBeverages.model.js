@@ -161,7 +161,18 @@ FoodAndBeverage.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { /* isActive: true */ },
+      where: {},
+    },
+    hooks: {
+      beforeValidate: (foodAndBeverage) => {
+        if (foodAndBeverage.changed("name") || !foodAndBeverage.slug) {
+          foodAndBeverage.slug = slugify(foodAndBeverage.name || "", {
+            lower: true,
+            strict: true,
+            remove: /[*+~.()'"!:@]/g,
+          });
+        }
+      },
     },
   }
 );

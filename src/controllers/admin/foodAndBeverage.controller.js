@@ -1,5 +1,6 @@
 const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
+const slugify = require("slugify");
 const UploadService = require("../../helpers/upload");
 const FoodAndBeverage = require("../../models/foodAndBeverages.model");
 const FoodAndBeveragesImage = require("../../models/FoodAndBeverageImages.model");
@@ -32,15 +33,6 @@ exports.createFoodAndBeverage = async (req, res) => {
   try {
     const foodAndBeverageData = req.body;
 
-    // Generate slug if not provided
-    if (!foodAndBeverageData.slug && foodAndBeverageData.name) {
-      foodAndBeverageData.slug = slugify(foodAndBeverageData.name, {
-        lower: true,
-        strict: true,
-        remove: /[*+~.()'"!:@]/g,
-      });
-    }
-
     const foodAndBeverage = await FoodAndBeverage.create(foodAndBeverageData);
 
     // Handle image uploads
@@ -58,6 +50,7 @@ exports.createFoodAndBeverage = async (req, res) => {
             model: FoodAndBeveragesImage,
             as: "images",
             order: [["sortOrder", "ASC"]],
+            attributes: ["id", "imageUrl", "fileName"],
           },
         ],
       }
@@ -104,6 +97,7 @@ exports.getAllFoodAndBeverages = async (req, res) => {
         model: FoodAndBeveragesImage,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
       },
     ];
 
@@ -171,6 +165,7 @@ exports.getFoodAndBeverageById = async (req, res) => {
           model: FoodAndBeveragesImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -207,7 +202,15 @@ exports.updateFoodAndBeverage = async (req, res) => {
   }
 
   try {
-    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id);
+    const foodAndBeverage = await FoodAndBeverage.findByPk(req.params.id, {
+      include: [
+        {
+          model: FoodAndBeveragesImage,
+          as: "images",
+        },
+      ],
+    });
+    
     if (!foodAndBeverage) {
       return res.status(404).json({
         success: false,
@@ -236,12 +239,46 @@ exports.updateFoodAndBeverage = async (req, res) => {
       ];
     }
 
-    // Update images
-    if (newImages.length > 0) {
-      await foodAndBeverage.updateImages(newImages);
+    if (
+      updateData.name &&
+      !updateData.slug &&
+      updateData.name !== foodAndBeverage.name
+    ) {
+      updateData.slug = slugify(updateData.name, {
+        lower: true,
+        strict: true,
+        remove: /[*+~.()'"!:@]/g,
+      });
     }
 
     await foodAndBeverage.update(updateData);
+
+    // Get existing image keys before deleting
+    const existingImageKeys = foodAndBeverage.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete existing images from S3 if they exist
+    if (existingImageKeys.length > 0) {
+      try {
+        if (existingImageKeys.length === 1) {
+          await UploadService.deleteFile(existingImageKeys[0]);
+        } else {
+          await UploadService.deleteMultipleFiles(existingImageKeys);
+        }
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+      }
+    }
+
+    // Update images
+    if (newImages.length > 0) {
+      await FoodAndBeveragesImage.destroy({
+        where: { foodAndBeverageId: foodAndBeverage.id },
+        force: true,
+      });
+      await FoodAndBeveragesImage.bulkCreate(newImages);
+    }
 
     // Fetch updated food and beverage
     const updatedFoodAndBeverage = await FoodAndBeverage.findByPk(
@@ -252,6 +289,7 @@ exports.updateFoodAndBeverage = async (req, res) => {
             model: FoodAndBeveragesImage,
             as: "images",
             order: [["sortOrder", "ASC"]],
+            attributes: ["id", "imageUrl", "fileName"],
           },
         ],
       }
@@ -358,6 +396,7 @@ exports.restoreFoodAndBeverage = async (req, res) => {
             model: FoodAndBeveragesImage,
             as: "images",
             order: [["sortOrder", "ASC"]],
+            attributes: ["id", "imageUrl", "fileName"],
           },
         ],
       }

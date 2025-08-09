@@ -86,6 +86,7 @@ app.use("/api/v1/activities", activites);
 app.use("/api/v1/events", events);
 app.use("/api/v1/guides", guidesRoutes);
 app.use("/api/v1/shopping", shopping);
+app.use("/api/v1/food-and-beverages", foodAndBeverages);
 
 app.use("/api/v1/admins", adminRoutes);
 
@@ -93,13 +94,6 @@ app.use("/api/v1/admins", adminRoutes);
 app.get("/", (req, res) => {
   res.send(`Welcome to Travel Vista API. Base URL: ${app_url}`);
 });
-
-// Routes
-
-/* second listing */
-
-
-app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 
 // admin
 app.use("/api/v1/admin/properties", adminPropertyRoutes);
