@@ -207,7 +207,16 @@ exports.updateShopping = async (req, res) => {
   }
 
   try {
-    const shopping = await Shopping.findByPk(req.params.id);
+    // Fetch shopping with its images
+    const shopping = await Shopping.findByPk(req.params.id, {
+      include: [
+        {
+          model: ShoppingImages,
+          as: "images",
+        },
+      ],
+    });
+
     if (!shopping) {
       return res.status(404).json({
         success: false,
@@ -246,12 +255,32 @@ exports.updateShopping = async (req, res) => {
       });
     }
 
+    // Get existing image keys before deleting
+    const existingImageKeys = shopping.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete existing images from S3 if they exist
+    if (existingImageKeys.length > 0) {
+      try {
+        if (existingImageKeys.length === 1) {
+          await UploadService.deleteFile(existingImageKeys[0]);
+        } else {
+          await UploadService.deleteMultipleFiles(existingImageKeys);
+        }
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+        // Continue with update even if S3 deletion fails
+      }
+    }
+
+    // Update the main record
     await shopping.update(updateData);
 
     // Update images
     if (newImages.length > 0) {
       await ShoppingImages.destroy({
-        where: { id: shopping.id },
+        where: { shoppingId: shopping.id }, // Fixed: Changed from 'id' to 'shoppingId'
         force: true,
       });
       await ShoppingImages.bulkCreate(newImages);
