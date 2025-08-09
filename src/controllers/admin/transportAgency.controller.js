@@ -247,7 +247,7 @@ exports.updateTransportAgency = async (req, res) => {
     const {
       transportTypes,
       images: imageUpdates = [],
-      ...updateData    
+      ...updateData
     } = req.body;
 
     // Update slug if title changed
@@ -461,7 +461,9 @@ exports.toggleActiveStatus = async (req, res) => {
   }
 
   try {
-    const agency = await TransportAgency.scope("withInactive").findByPk(req.params.id);
+    const agency = await TransportAgency.scope("withInactive").findByPk(
+      req.params.id
+    );
     if (!agency) {
       return res.status(404).json({
         success: false,
@@ -530,15 +532,29 @@ exports.verifyTransportAgency = async (req, res) => {
   }
 };
 
-/* Update transport agency transport types */
-exports.updateTransportTypes = async (req, res) => {
+/* Update transport agency */
+exports.updateTransportAgency = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
-    const agency = await TransportAgency.findByPk(req.params.id);
+    // Fetch agency with its images and transport types
+    const agency = await TransportAgency.findByPk(req.params.id, {
+      include: [
+        {
+          model: TransportAgencyImage,
+          as: "images",
+        },
+        {
+          model: TransportType,
+          as: "transportTypes",
+          through: { attributes: [] },
+        },
+      ],
+    });
+
     if (!agency) {
       return res.status(404).json({
         success: false,
@@ -546,35 +562,100 @@ exports.updateTransportTypes = async (req, res) => {
       });
     }
 
-    const { transportTypes } = req.body;
+    const { transportTypes, images: bodyImages, ...updateData } = req.body;
+    let newImages = [];
 
-    await agency.updateTransportTypes(transportTypes);
+    // Handle file uploads
+    const uploadedImages = await handleImageUploads(req.files, agency.id);
+    newImages = [...uploadedImages];
 
+    // Handle body images
+    if (bodyImages?.length) {
+      newImages = [
+        ...newImages,
+        ...bodyImages.map((img) => ({
+          ...img,
+          s3Key: img.s3Key || null,
+        })),
+      ];
+    }
+
+    // Update slug if title changed
+    if (
+      updateData.title &&
+      !updateData.slug &&
+      updateData.title !== agency.title
+    ) {
+      updateData.slug = slugify(updateData.title, {
+        lower: true,
+        strict: true,
+        remove: /[*+~.()'"!:@]/g,
+      });
+    }
+
+    // Get existing image keys before deleting
+    const existingImageKeys = agency.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete existing images from S3 if they exist
+    if (existingImageKeys.length > 0) {
+      try {
+        if (existingImageKeys.length === 1) {
+          await UploadService.deleteFile(existingImageKeys[0]);
+        } else {
+          await UploadService.deleteMultipleFiles(existingImageKeys);
+        }
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+      }
+    }
+
+    // Update transport types if provided
+    if (transportTypes) {
+      await agency.setTransportTypes(transportTypes);
+    }
+
+    // Update the main record
+    await agency.update(updateData);
+
+    // Update images
+    if (newImages.length > 0) {
+      await TransportAgencyImage.destroy({
+        where: { transportAgencyId: agency.id },
+        force: true,
+      });
+      await TransportAgencyImage.bulkCreate(newImages);
+    }
+
+    // Fetch updated agency with associations
     const updatedAgency = await TransportAgency.findByPk(agency.id, {
       include: [
         {
           model: TransportType,
           as: "transportTypes",
           through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: TransportAgencyImage,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "caption", "isFeatured", "sortOrder"],
         },
       ],
     });
 
     return res.status(200).json({
       success: true,
-      message: "Transport agency types updated successfully",
+      message: "Transport agency updated successfully",
       data: updatedAgency,
     });
   } catch (error) {
-    console.error("Error updating transport agency types:", error);
+    console.error("Error updating transport agency:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update transport agency types",
+      message: "Failed to update transport agency",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
