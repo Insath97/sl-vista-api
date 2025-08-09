@@ -48,9 +48,9 @@ router.patch(
 );
 
 // Verify transport agency
-router.patch("/:id/verify", validate.verify, controller.verifyTransportAgency);
+router.patch("/:id/verify", controller.verifyTransportAgency);
 
-// Update transport types
+/* // Update transport types
 router.patch(
   "/:id/transport-types",
   validate.updateTransportTypes,
@@ -71,6 +71,6 @@ router.delete(
   validate.deleteImage,
   controller.deleteImage
 );
-
+ */
 
 module.exports = router;
