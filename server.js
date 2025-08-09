@@ -75,6 +75,7 @@ app.use((req, res, next) => {
    Route Configuration
   ====================== 
 */
+app.use("/api/v1/admins", adminRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/languages", languagesRoutes);
 app.use("/api/v1/amenities", amenityRoutes);
@@ -87,8 +88,6 @@ app.use("/api/v1/events", events);
 app.use("/api/v1/guides", guidesRoutes);
 app.use("/api/v1/shopping", shopping);
 app.use("/api/v1/food-and-beverages", foodAndBeverages);
-
-app.use("/api/v1/admins", adminRoutes);
 
 // 1st api
 app.get("/", (req, res) => {
