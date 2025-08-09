@@ -5,6 +5,12 @@ const validate = require("../../utils/validations/shoppings.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
+//Get all shopping items
+router.get("/", validate.list, controller.getAllShoppings);
+
+// Get single shopping item by ID
+router.get("/:id", validate.getById, controller.getShoppingById);
+
 router.use(middleware.authenticate);
 
 // Create events

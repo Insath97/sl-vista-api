@@ -151,7 +151,18 @@ Shopping.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: {},
+    },
+    hooks: {
+      beforeValidate: (shopping) => {
+        if (shopping.changed("name") || !shopping.slug) {
+          shopping.slug = slugify(shopping.name || "", {
+            lower: true,
+            strict: true,
+            remove: /[*+~.()'"!:@]/g,
+          });
+        }
+      },
     },
   }
 );

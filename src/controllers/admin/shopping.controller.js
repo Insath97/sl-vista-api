@@ -57,6 +57,7 @@ exports.createShopping = async (req, res) => {
           model: ShoppingImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -102,6 +103,7 @@ exports.getAllShoppings = async (req, res) => {
         model: ShoppingImages,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
       },
     ];
 
@@ -168,6 +170,7 @@ exports.getShoppingById = async (req, res) => {
           model: ShoppingImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -243,12 +246,16 @@ exports.updateShopping = async (req, res) => {
       });
     }
 
+    await shopping.update(updateData);
+
     // Update images
     if (newImages.length > 0) {
-      await shopping.updateImages(newImages);
+      await ShoppingImages.destroy({
+        where: { id: shopping.id },
+        force: true,
+      });
+      await ShoppingImages.bulkCreate(newImages);
     }
-
-    await shopping.update(updateData);
 
     // Fetch updated shopping
     const updatedShopping = await Shopping.findByPk(shopping.id, {
@@ -257,6 +264,7 @@ exports.updateShopping = async (req, res) => {
           model: ShoppingImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -358,6 +366,7 @@ exports.restoreShopping = async (req, res) => {
           model: ShoppingImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });

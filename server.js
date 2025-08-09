@@ -85,6 +85,7 @@ app.use("/api/v1/local-artists", localArtistRoutes);
 app.use("/api/v1/activities", activites);
 app.use("/api/v1/events", events);
 app.use("/api/v1/guides", guidesRoutes);
+app.use("/api/v1/shopping", shopping);
 
 app.use("/api/v1/admins", adminRoutes);
 
@@ -97,7 +98,7 @@ app.get("/", (req, res) => {
 
 /* second listing */
 
-app.use("/api/v1/admin/shopping", shopping);
+
 app.use("/api/v1/admin/food-and-beverages", foodAndBeverages);
 
 // admin
