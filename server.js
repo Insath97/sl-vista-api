@@ -96,7 +96,7 @@ app.get("/", (req, res) => {
 });
 
 // admin
-app.use("/api/v1/admin/properties", adminPropertyRoutes);
+app.use("/api/v1/admin/properties", adminPropertyRoutes); 
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
 app.use("/api/v1/admin/permissions", permissionRoutes);
@@ -114,7 +114,6 @@ app.use("/api/v1", commonRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
 /* app.use("/api/v1/rooms", roomRoutes); */
 
-/* auth */
 
 /* merchant registration and other admin level routes */
 app.use("/api/v1/", merchantRoutes);
