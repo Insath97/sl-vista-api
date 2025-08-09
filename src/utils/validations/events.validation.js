@@ -164,7 +164,7 @@ module.exports = {
   getById: [idParam, query("includeDeleted").optional().isBoolean()],
   delete: [idParam],
   list: queryValidations,
-  toggleStatus: [idParam],
+  toggleStatus: [param("id").isInt().withMessage("Invalid event ID")],
   restore: [idParam],
   updateImages: updateImagesValidation,
   deleteImage: deleteImageValidation,

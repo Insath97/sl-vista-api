@@ -5,31 +5,28 @@ const validate = require("../../utils/validations/events.validation");
 const middleware = require("../../middlewares/auth.middleware");
 const uploadMiddleware = require("../../middlewares/uploadMiddleware");
 
+// Get all events
+router.get("/", validate.list, controller.getAllEvents);
+
+// Get single event by ID
+router.get("/:id", validate.getById, controller.getEventById);
+
 router.use(middleware.authenticate);
 
 // Create events
-router.post(
-  "/",
-  uploadMiddleware,
-  // validate.create,
-  controller.createEvent
-);
+router.post("/", uploadMiddleware, validate.create, controller.createEvent);
 
 // Get all events
 router.get("/", validate.list, controller.getAllEvents);
 
 // Get single event by ID
-router.get(
-  "/:id",
-  // validate.getById,
-  controller.getEventById
-);
+router.get("/:id", validate.getById, controller.getEventById);
 
 // Update event by ID
 router.put(
   "/:id",
   uploadMiddleware,
-  // validate.update, // (optional validation)
+  validate.update, // (optional validation)
   controller.updateEvent
 );
 
@@ -42,16 +39,12 @@ router.patch("/restore/:id", controller.restoreEvent);
 // Toggle active status
 router.patch(
   "/status/:id",
-  // validate.toggleStatus,
+  validate.toggleStatus,
   controller.toggleActiveStatus
 );
 
 //verify
-router.patch(
-  "/:id/verify",
-  // validate.verify,
-  controller.verifyEvent
-);
+router.patch("/verify/:id", controller.verifyEvent);
 
 // Update images
 router.put(

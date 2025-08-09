@@ -59,6 +59,7 @@ exports.createEvent = async (req, res) => {
           model: EventsImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -87,8 +88,8 @@ exports.getAllEvents = async (req, res) => {
   try {
     const {
       isActive,
+      vista,
       includeDeleted,
-      includeImages,
       search,
       city,
       province,
@@ -96,44 +97,52 @@ exports.getAllEvents = async (req, res) => {
       limit = 10,
     } = req.query;
 
-    const offset = (page - 1) * limit;
     const where = {};
     const include = [
       {
         model: EventsImages,
         as: "images",
         order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
       },
     ];
 
     if (isActive === "true") where.isActive = true;
     else if (isActive === "false") where.isActive = false;
-
+    if (vista !== undefined) where.vistaVerified = vista === "true";
     if (search) {
       where.title = { [Op.like]: `%${search}%` };
     }
-
     if (city) where.city = city;
     if (province) where.province = province;
 
-    const result = await Events.findAndCountAll({
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const options = {
       where,
       include,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      paranoid: includeDeleted !== "true", // include soft-deleted if true
+      distinct: true,
       order: [["createdAt", "DESC"]],
-    });
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+    };
+
+    const { count, rows: events } = await Events.scope("withInactive").findAndCountAll(options);
 
     return res.status(200).json({
       success: true,
-      message: "Events fetched successfully",
-      data: result.rows,
+      data: events,
       pagination: {
-        total: result.count,
+        total: count,
         page: parseInt(page),
-        pageSize: parseInt(limit),
-        totalPages: Math.ceil(result.count / limit),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit),
       },
     });
   } catch (error) {
@@ -162,6 +171,7 @@ exports.getEventById = async (req, res) => {
           model: EventsImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
       paranoid: includeDeleted !== "true",
@@ -235,6 +245,7 @@ exports.updateEvent = async (req, res) => {
     if (newImages.length > 0) {
       await EventsImages.destroy({
         where: { eventId: event.id },
+        force: true,
       });
       await EventsImages.bulkCreate(newImages);
     }
@@ -245,6 +256,7 @@ exports.updateEvent = async (req, res) => {
           model: EventsImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -342,6 +354,7 @@ exports.restoreEvent = async (req, res) => {
           model: EventsImages,
           as: "images",
           order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
         },
       ],
     });
@@ -368,7 +381,7 @@ exports.toggleActiveStatus = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
 
   try {
-    const event = await Events.findByPk(req.params.id);
+    const event = await Events.scope("withInactive").findByPk(req.params.id);
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -376,15 +389,14 @@ exports.toggleActiveStatus = async (req, res) => {
       });
     }
 
-    const newStatus = !event.isActive;
-    await event.update({ isActive: newStatus });
+    await event.update({ isActive: !event.isActive });
 
     return res.status(200).json({
       success: true,
       message: "Event status toggled successfully",
       data: {
         id: event.id,
-        isActive: newStatus,
+        isActive: !event.isActive,
       },
     });
   } catch (error) {

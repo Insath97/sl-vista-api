@@ -58,6 +58,12 @@ class Events extends Model {
 
     return await image.update({ isFeatured: true });
   }
+
+  async toggleVisibility() {
+    this.isActive = !this.isActive;
+    await this.save();
+    return this;
+  }
 }
 
 Events.init(
@@ -68,7 +74,6 @@ Events.init(
       primaryKey: true,
       validate: { isInt: true },
     },
-
     title: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -96,7 +101,6 @@ Events.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-
     venue: {
       type: DataTypes.STRING(50),
       allowNull: true,
@@ -128,16 +132,6 @@ Events.init(
         notEmpty: { msg: "Name cannot be empty" },
         len: [2, 100],
       },
-      set(value) {
-        this.setDataValue("name", value.trim());
-        if (!this.slug) {
-          this.slug = slugify(value, {
-            lower: true,
-            strict: true,
-            remove: /[*+~.()'"!:@]/g,
-          });
-        }
-      },
     },
     email: {
       type: DataTypes.STRING(100),
@@ -148,7 +142,7 @@ Events.init(
     },
     phone: {
       type: DataTypes.STRING(20),
-      allowNull: false,
+      allowNull: true,
       validate: {
         notEmpty: { msg: "Phone number is required" },
       },
@@ -178,10 +172,14 @@ Events.init(
     defaultScope: {
       where: { isActive: true },
     },
+    scopes: {
+      withInactive: { where: {} },
+      forAdmin: { paranoid: false },
+    },
     hooks: {
       beforeValidate: (event) => {
-        if (event.changed("name") || !event.slug) {
-          event.slug = slugify(event.name || "", {
+        if (!event.slug && event.title) {
+          event.slug = slugify(event.title, {
             lower: true,
             strict: true,
             remove: /[*+~.()'"!:@]/g,

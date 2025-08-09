@@ -109,7 +109,7 @@ exports.getAllActivities = async (req, res) => {
 
     // Filter conditions
     if (isActive !== undefined) where.isActive = isActive === "true";
-    if (vista) where.vista = vista;
+    if (vista !== undefined) where.vistaVerified = vista === "true";
     if (city) where.city = city;
     if (district) where.district = district;
     if (type) where.type = type;
