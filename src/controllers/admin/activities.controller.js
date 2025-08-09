@@ -208,7 +208,15 @@ exports.updateActivity = async (req, res) => {
   }
 
   try {
-    const activity = await Activities.findByPk(req.params.id);
+    const activity = await Activities.findByPk(req.params.id, {
+      include: [
+        {
+          model: ActivitiesImages,
+          as: "images",
+        },
+      ],
+    });
+
     if (!activity) {
       return res.status(404).json({
         success: false,
@@ -247,12 +255,35 @@ exports.updateActivity = async (req, res) => {
       });
     }
 
-    // Update images
-    if (newImages.length > 0) {
-      await activity.updateImages(newImages);
+    // Get existing image keys before deleting
+    const existingImageKeys = activity.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete existing images from S3 if they exist
+    if (existingImageKeys.length > 0) {
+      try {
+        if (existingImageKeys.length === 1) {
+          await UploadService.deleteFile(existingImageKeys[0]);
+        } else {
+          await UploadService.deleteMultipleFiles(existingImageKeys);
+        }
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+        // Continue with update even if S3 deletion fails
+      }
     }
 
     await activity.update(updateData);
+
+    // Update images
+    if (newImages.length > 0) {
+      await ActivitiesImages.destroy({
+        where: { activityId: activity.id },
+        force: true,
+      });
+      await ActivitiesImages.bulkCreate(newImages);
+    }
 
     const updatedActivity = await Activities.findByPk(activity.id, {
       include: [
