@@ -581,7 +581,7 @@ exports.updateMerchant = async (req, res) => {
           userUpdates.email = updates.email;
         }
         if (updates.password) {
-          userUpdates.password = await bcrypt.hash(updates.password, 12);
+          userUpdates.password = updates.password;
         }
 
         if (Object.keys(userUpdates).length > 0) {
