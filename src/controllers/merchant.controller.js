@@ -1,5 +1,6 @@
 const { validationResult } = require("express-validator");
 const { sequelize } = require("../config/database");
+const bcrypt = require("bcrypt");
 const User = require("../models/user.model");
 const MerchantProfile = require("../models/merchantProfile.model");
 const Role = require("../models/role.model");
@@ -511,51 +512,95 @@ exports.updateMerchant = async (req, res) => {
       });
     }
 
-    // Fields merchants are allowed to update
-    const merchantAllowedUpdates = {
+    // Admin-only fields that merchants shouldn't be able to update
+    const adminOnlyFields = [
+      "businessType",
+      "allowedPropertyTypes",
+      "maxPropertiesAllowed",
+      "status",
+      "adminNotes",
+      "suspensionReason",
+      "verificationDate",
+      "isActive",
+    ];
+
+    // Fields merchants are allowed to update (profile fields)
+    const merchantAllowedProfileUpdates = {
       merchantName: updates.merchantName,
       businessName: updates.businessName,
+      businessRegistrationNumber: updates.businessRegistrationNumber,
       address: updates.address,
       city: updates.city,
       country: updates.country,
       phoneNumber: updates.phoneNumber,
       businessDescription: updates.businessDescription,
+      ...(updates.isSriLankan !== undefined && {
+        isSriLankan: updates.isSriLankan,
+      }),
+      ...(updates.isSriLankan && { nicNumber: updates.nicNumber }),
+      ...(!updates.isSriLankan && { passportNumber: updates.passportNumber }),
     };
 
-    // For admin - can update everything including sensitive fields
-    const adminAllowedUpdates = {
-      ...updates, // All fields from request
-      ...(updates.password && {
-        password: await bcrypt.hash(updates.password, 12),
-      }),
-    };
+    // User fields merchants can update (email and password)
+    const merchantAllowedUserUpdates = {};
+    if (updates.email) {
+      merchantAllowedUserUpdates.email = updates.email;
+    }
+    if (updates.password) {
+      merchantAllowedUserUpdates.password = await bcrypt.hash(
+        updates.password,
+        12
+      );
+    }
+
+    // Check if merchant is trying to update admin-only fields
+    if (!isAdmin) {
+      const attemptedAdminUpdates = Object.keys(updates).filter((field) =>
+        adminOnlyFields.includes(field)
+      );
+
+      if (attemptedAdminUpdates.length > 0) {
+        return res.status(403).json({
+          success: false,
+          message: `You are not allowed to update the following fields: ${attemptedAdminUpdates.join(
+            ", "
+          )}`,
+        });
+      }
+    }
 
     // Apply updates based on role
-    if (isAdmin) {
-      // Admin can update everything
-      await sequelize.transaction(async (t) => {
-        // Update merchant profile
-        await merchant.update(adminAllowedUpdates, { transaction: t });
+    await sequelize.transaction(async (t) => {
+      if (isAdmin) {
+        // Admin can update everything
+        await merchant.update(updates, { transaction: t });
 
-        // Update user email if provided
+        // Handle user updates
+        const userUpdates = {};
         if (updates.email) {
-          await merchant.user.update(
-            { email: updates.email },
-            { transaction: t }
-          );
+          userUpdates.email = updates.email;
+        }
+        if (updates.password) {
+          userUpdates.password = await bcrypt.hash(updates.password, 12);
         }
 
-        if (updates.password) {
-          await merchant.user.update(
-            { password: updates.password },
-            { transaction: t }
-          );
+        if (Object.keys(userUpdates).length > 0) {
+          await merchant.user.update(userUpdates, { transaction: t });
         }
-      });
-    } else {
-      // Merchant can only update allowed fields
-      await merchant.update(merchantAllowedUpdates);
-    }
+      } else {
+        // Merchant can only update allowed fields
+        await merchant.update(merchantAllowedProfileUpdates, {
+          transaction: t,
+        });
+
+        // Update user email/password if provided
+        if (Object.keys(merchantAllowedUserUpdates).length > 0) {
+          await merchant.user.update(merchantAllowedUserUpdates, {
+            transaction: t,
+          });
+        }
+      }
+    });
 
     // Fetch updated merchant data
     const updatedMerchant = await MerchantProfile.findByPk(id, {
