@@ -6,7 +6,7 @@ const middleware = require("../middlewares/auth.middleware");
 
 /* public routes */
 router.post(
-  "/merchant/register",
+  "/register",
   validate.createMerchantValidation,
   controller.registerMerchant
 );
@@ -15,49 +15,49 @@ router.use(middleware.authenticate);
 
 /* list all merchants */
 router.get(
-  "/merchants",
+  "/",
   validate.listMerchantsValidation,
   controller.listMerchants
 );
 
 /* approved merchant */
 router.patch(
-  "/merchant/:id/approve",
+  "/:id/approve",
   validate.approveMerchantValidation,
   controller.approveMerchant
 );
 
 /* rejected merchant */
 router.patch(
-  "/merchant/:id/reject",
+  "/:id/reject",
   validate.rejectMerchantValidation,
   controller.rejectMerchant
 );
 
 /* update status */
 router.patch(
-  "/merchant/:id/status",
+  "/:id/status",
   validate.updateMerchantStatusValidation,
   controller.updateMerchantStatus
 );
 
 /* update admin and update profile */
 router.put(
-  "/merchant/:id",
+  "/:id",
   validate.updateMerchantValidation,
   controller.updateMerchant
 );
 
 /* delete */
 router.delete(
-  "/merchant/:id",
+  "/:id",
   validate.deleteMerchantValidation,
   controller.deleteMerchant
 );
 
 /* restore */
 router.patch(
-  "/merchant/:id/restore",
+  "/:id/restore",
   validate.restoreMerchantValidation,
   controller.restoreMerchant
 );

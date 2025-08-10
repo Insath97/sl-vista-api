@@ -88,7 +88,7 @@ app.use("/api/v1/events", events);
 app.use("/api/v1/guides", guidesRoutes);
 app.use("/api/v1/shopping", shopping);
 app.use("/api/v1/food-and-beverages", foodAndBeverages);
-app.use("/api/v1/", merchantRoutes);
+app.use("/api/v1/merchant", merchantRoutes);
 
 // 1st api
 app.get("/", (req, res) => {
