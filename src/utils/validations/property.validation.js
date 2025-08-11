@@ -6,74 +6,139 @@ const PropertyImage = require("../../models/propertyImage.model");
 const User = require("../../models/user.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
 
-// Common validation rules
-const idParam = param("id")
-  .isInt()
-  .withMessage("Invalid ID format")
+// Common validation helpers
+const validateIdParam = (paramName, model, options = {}) => {
+  return param(paramName)
+    .isInt({ min: 1 })
+    .withMessage(`Invalid ${paramName} format`)
+    .toInt()
+    .custom(async (value, { req }) => {
+      const record = await model.findByPk(value, options);
+      if (!record) {
+        throw new Error(`${model.name} not found`);
+      }
+      return true;
+    });
+};
+
+const validateMerchantOwnership = async (propertyId, userId) => {
+  const merchant = await MerchantProfile.findOne({
+    where: { userId },
+    attributes: ["id", "businessType"],
+  });
+
+  if (!merchant) {
+    throw new Error("Merchant profile not found");
+  }
+
+  // Check business type restrictions
+  if (["homestay"].includes(merchant.businessType)) {
+    throw new Error("Your business type does not allow property management");
+  }
+
+  const property = await Property.findOne({
+    where: {
+      id: propertyId,
+      merchantId: merchant.id,
+    },
+  });
+
+  if (!property) {
+    throw new Error("Property not found or not owned by your merchant account");
+  }
+
+  return true;
+};
+
+// Property ID validation with ownership and business type check
+const propertyIdParam = param("id")
+  .isInt({ min: 1 })
+  .withMessage("Invalid property ID format")
+  .toInt()
   .custom(async (value, { req }) => {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      paranoid: false,
+    if (req.user.accountType === "admin") {
+      const property = await Property.findByPk(value, { paranoid: false });
+      if (!property) throw new Error("Property not found");
+      return true;
+    }
+
+    return validateMerchantOwnership(value, req.user.id);
+  });
+
+// Business type access validation
+const businessTypeAccessValidation = body().custom(async (value, { req }) => {
+  if (req.user?.accountType === "merchant") {
+    const merchant = await MerchantProfile.findOne({
+      where: { userId: req.user.id },
+      attributes: ["businessType"],
     });
 
-    if (!user || !user.merchantProfile) {
+    if (!merchant) {
       throw new Error("Merchant profile not found");
     }
 
-    const property = await Property.findOne({
-      where: {
-        id: value,
-        merchantId: user.merchantProfile.id,
-      },
-      paranoid: false,
-    });
-    if (!property) {
-      throw new Error("Property not found or not owned by merchant");
+    if (["homestay"].includes(merchant.businessType)) {
+      throw new Error("Your business type does not allow property access");
     }
-  });
-
-const validateTitle = body("title")
-  .trim()
-  .isLength({ min: 2, max: 100 })
-  .withMessage("Title must be 2-100 characters")
-  .custom(async (value, { req }) => {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
-
-    if (!user || !user.merchantProfile) {
-      throw new Error("Merchant profile not found");
-    }
-
-    const where = {
-      title: value,
-      merchantId: user.merchantProfile.id,
-    };
-
-    if (req.params?.id) {
-      where.id = { [Op.ne]: req.params.id };
-    }
-
-    const exists = await Property.findOne({ where });
-    if (exists) {
-      throw new Error("You already have a property with this title");
-    }
-    return true;
-  });
-
-const validateSlug = body("slug")
-  .optional()
-  .trim()
-  .matches(/^[a-z0-9-]+$/)
-  .withMessage("Slug can only contain lowercase letters, numbers and hyphens")
-  .isLength({ max: 100 })
-  .withMessage("Slug must be less than 100 characters");
+  }
+  return true;
+});
 
 // Property basic validations
 const propertyValidations = [
+  businessTypeAccessValidation,
+
   body("propertyType")
     .isIn(["hotel", "homestay", "apartment", "resort", "villa"])
     .withMessage("Invalid property type"),
+
+  body("title")
+    .trim()
+    .notEmpty()
+    .withMessage("Title is required")
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Title must be 2-100 characters")
+    .custom(async (value, { req }) => {
+      const where = {
+        title: { [Op.iLike]: value },
+        [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+      };
+
+      if (req.user.accountType === "merchant") {
+        const merchant = await MerchantProfile.findOne({
+          where: { userId: req.user.id },
+          attributes: ["id"],
+        });
+        if (!merchant) throw new Error("Merchant profile not found");
+        where.merchantId = merchant.id;
+      } else if (req.body.merchantId) {
+        where.merchantId = req.body.merchantId;
+      }
+
+      const exists = await Property.findOne({ where });
+      if (exists) {
+        throw new Error("This title is already in use for this merchant");
+      }
+      return true;
+    }),
+
+  body("slug")
+    .optional()
+    .trim()
+    .matches(/^[a-z0-9-]+$/)
+    .withMessage("Slug can only contain lowercase letters, numbers and hyphens")
+    .isLength({ max: 100 })
+    .withMessage("Slug must be less than 100 characters")
+    .custom(async (value, { req }) => {
+      const exists = await Property.findOne({
+        where: {
+          slug: value,
+          [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+        },
+      });
+      if (exists) throw new Error("This slug is already in use");
+      return true;
+    }),
 
   body("address")
     .trim()
@@ -89,14 +154,21 @@ const propertyValidations = [
     .isLength({ max: 50 })
     .withMessage("City must be less than 50 characters"),
 
-  body("state")
+  body("district")
     .optional()
     .trim()
     .isLength({ max: 50 })
-    .withMessage("State must be less than 50 characters"),
+    .withMessage("District must be less than 50 characters"),
+
+  body("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
 
   body("country")
     .optional()
+    .default("Sri Lanka")
     .trim()
     .isLength({ max: 50 })
     .withMessage("Country must be less than 50 characters"),
@@ -107,14 +179,10 @@ const propertyValidations = [
     .isLength({ max: 20 })
     .withMessage("Postal code must be less than 20 characters"),
 
-  body("starRating")
-    .optional()
-    .isInt({ min: 1, max: 5 })
-    .withMessage("Star rating must be between 1-5"),
-
   body("cancellationPolicy")
     .isIn(["flexible", "moderate", "strict", "non_refundable"])
-    .withMessage("Invalid cancellation policy"),
+    .withMessage("Invalid cancellation policy")
+    .default("moderate"),
 
   body("latitude")
     .optional()
@@ -129,12 +197,14 @@ const propertyValidations = [
   body("checkInTime")
     .optional()
     .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage("Invalid check-in time format (HH:MM)"),
+    .withMessage("Invalid check-in time format (HH:MM)")
+    .default("14:00"),
 
   body("checkOutTime")
     .optional()
     .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage("Invalid check-out time format (HH:MM)"),
+    .withMessage("Invalid check-out time format (HH:MM)")
+    .default("12:00"),
 
   body("description")
     .optional()
@@ -165,16 +235,45 @@ const propertyValidations = [
     .isLength({ max: 255 })
     .withMessage("Website URL must be less than 255 characters"),
 
+  body("facebookUrl")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid Facebook URL"),
+
+  body("instagramUrl")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid Instagram URL"),
+
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean value"),
+    .withMessage("isActive must be a boolean value")
+    .toBoolean(),
 
   body("vistaVerified")
     .optional()
     .isBoolean()
-    .withMessage("vistaVerified must be a boolean value"),
+    .withMessage("vistaVerified must be a boolean value")
+    .toBoolean(),
 
+  body("merchantId")
+    .if((value, { req }) => req.user.accountType === "admin")
+    .notEmpty()
+    .withMessage("merchantId is required for admin")
+    .isInt()
+    .withMessage("merchantId must be an integer")
+    .custom(async (value) => {
+      const merchant = await MerchantProfile.findByPk(value);
+      if (!merchant) throw new Error("Merchant not found");
+      return true;
+    }),
+];
+
+// Status validations (unchanged)
+const statusValidations = [
   body("approvalStatus")
     .optional()
     .isIn(["pending", "approved", "rejected", "changes_requested"])
@@ -184,88 +283,32 @@ const propertyValidations = [
     .optional()
     .isIn(["available", "unavailable", "maintenance", "archived"])
     .withMessage("Invalid availability status"),
+
+  body("rejectionReason")
+    .optional()
+    .isString()
+    .withMessage("Rejection reason must be a string")
+    .isLength({ max: 1000 })
+    .withMessage("Rejection reason must be less than 1000 characters")
+    .custom((value, { req }) => {
+      if (req.body.approvalStatus === "rejected" && !value) {
+        throw new Error("Rejection reason is required when status is rejected");
+      }
+      return true;
+    }),
 ];
 
-// Query validations
-const queryValidations = [
-  query("includeInactive")
-    .optional()
-    .isBoolean()
-    .withMessage("includeInactive must be a boolean"),
-
-  query("includeDeleted")
-    .optional()
-    .isBoolean()
-    .withMessage("includeDeleted must be a boolean"),
-
-  query("includeImages")
-    .optional()
-    .isBoolean()
-    .withMessage("includeImages must be a boolean"),
-
-  query("includeAmenities")
-    .optional()
-    .isBoolean()
-    .withMessage("includeAmenities must be a boolean"),
-
-  query("includeMerchant")
-    .optional()
-    .isBoolean()
-    .withMessage("includeMerchant must be a boolean"),
-
-  query("search")
-    .optional()
-    .trim()
-    .isLength({ max: 100 })
-    .withMessage("Search query too long"),
-
-  query("propertyType")
-    .optional()
-    .isIn(["hotel", "homestay", "apartment", "resort", "villa"])
-    .withMessage("Invalid property type"),
-
-  query("city")
-    .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("City must be less than 50 characters"),
-
-  query("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-
-  query("availabilityStatus")
-    .optional()
-    .isIn(["available", "unavailable", "maintenance", "archived"])
-    .withMessage("Invalid availability status"),
-
-  query("page")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Page must be a positive integer"),
-
-  query("limit")
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
-];
-
-// Amenity validations
+// Amenity validations (unchanged)
 const amenityValidations = [
   body("amenities")
     .optional()
+    .isArray()
+    .withMessage("Amenities must be an array")
     .customSanitizer((value) => {
       if (typeof value === "string") {
         return value.split(",").map((id) => parseInt(id.trim()));
       }
       return value;
-    })
-    .custom((value) => {
-      if (value && !Array.isArray(value)) {
-        throw new Error("Amenities must be an array or comma-separated string");
-      }
-      return true;
     }),
 
   body("amenities.*")
@@ -279,16 +322,36 @@ const amenityValidations = [
     }),
 ];
 
-// Image validations
+// Image validations (unchanged)
 const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),
 
   body("images.*.imageUrl")
-    .optional()
+    .if(body("images.*.imageUrl").exists())
     .isURL()
     .withMessage("Image URL must be a valid URL")
     .isLength({ max: 512 })
     .withMessage("Image URL must be less than 512 characters"),
+
+  body("images.*.s3Key")
+    .optional()
+    .isString()
+    .withMessage("S3 key must be a string"),
+
+  body("images.*.fileName")
+    .optional()
+    .isString()
+    .withMessage("File name must be a string"),
+
+  body("images.*.size")
+    .optional()
+    .isInt()
+    .withMessage("File size must be an integer"),
+
+  body("images.*.mimetype")
+    .optional()
+    .isString()
+    .withMessage("MIME type must be a string"),
 
   body("images.*.caption")
     .optional()
@@ -308,147 +371,234 @@ const imageValidations = [
     .withMessage("sortOrder must be an integer"),
 ];
 
-const updateAmenitiesValidation = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  body("amenities")
-    .isArray({ min: 1 })
-    .withMessage("Amenities array cannot be empty"),
-  ...amenityValidations,
-];
+// Query validations with business type check
+const queryValidations = [
+  query().custom(async (value, { req }) => {
+    if (req.user?.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+        attributes: ["businessType"],
+      });
 
-const updateImagesValidation = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  body("images")
-    .isArray({ min: 1 })
-    .withMessage("Images array cannot be empty"),
-  ...imageValidations,
-  body("images.*.id")
-    .optional()
-    .isInt()
-    .withMessage("Image ID must be an integer"),
-];
+      if (!merchant) {
+        throw new Error("Merchant profile not found");
+      }
 
-const deleteImageValidation = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  param("imageId").isInt().withMessage("Invalid image ID"),
-];
-
-const setFeaturedImageValidation = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  param("imageId").isInt().withMessage("Invalid image ID"),
-];
-
-const verifyPropertyValidation = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  body("verified")
-    .optional()
-    .isBoolean()
-    .withMessage("verified must be a boolean"),
-  body("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-  body("rejectionReason")
-    .optional()
-    .isString()
-    .withMessage("rejectionReason must be a string"),
-];
-
-const updateApprovalStatus = [
-  param("id").isInt().withMessage("Invalid property ID"),
-  body("approvalStatus")
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-  body("rejectionReason")
-    .if(body("approvalStatus").equals("rejected"))
-    .notEmpty()
-    .withMessage("Rejection reason is required when status is rejected")
-    .optional()
-    .isString()
-    .withMessage("Rejection reason must be a string")
-    .isLength({ max: 1000 })
-    .withMessage("Rejection reason must be less than 1000 characters"),
-];
-
-// Public property ID validation (no merchant ownership check)
-const publicIdParam = param("id")
-  .isInt()
-  .withMessage("Invalid property ID format")
-  .custom(async (value) => {
-    const property = await Property.findByPk(value, { paranoid: false });
-    if (!property) {
-      throw new Error("Property not found");
+      if (["homestay"].includes(merchant.businessType)) {
+        throw new Error("Your business type does not allow property access");
+      }
     }
     return true;
-  });
+  }),
 
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer")
+    .toInt()
+    .default(1),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100")
+    .toInt()
+    .default(10),
+
+  query("search")
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query too long"),
+
+  query("propertyType")
+    .optional()
+    .isIn(["hotel", "homestay", "apartment", "resort", "villa"])
+    .withMessage("Invalid property type"),
+
+  query("city")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("City must be less than 50 characters"),
+
+  query("district")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("District must be less than 50 characters"),
+
+  query("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
+
+  query("approvalStatus")
+    .optional()
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
+
+  query("availabilityStatus")
+    .optional()
+    .isIn(["available", "unavailable", "maintenance", "archived"])
+    .withMessage("Invalid availability status"),
+
+  query("isActive")
+    .optional()
+    .isBoolean()
+    .withMessage("isActive must be a boolean")
+    .toBoolean(),
+
+  query("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean")
+    .toBoolean(),
+
+  query("includeDeleted")
+    .optional()
+    .isBoolean()
+    .withMessage("includeDeleted must be a boolean")
+    .toBoolean(),
+
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean")
+    .toBoolean(),
+
+  query("includeAmenities")
+    .optional()
+    .isBoolean()
+    .withMessage("includeAmenities must be a boolean")
+    .toBoolean(),
+
+  query("includeMerchant")
+    .optional()
+    .isBoolean()
+    .withMessage("includeMerchant must be a boolean")
+    .toBoolean(),
+
+  query("sortBy")
+    .optional()
+    .isIn([
+      "createdAt",
+      "updatedAt",
+      "title",
+      "city",
+      "propertyType",
+      "approvalStatus",
+      "vistaVerified",
+    ])
+    .withMessage("Invalid sort field"),
+
+  query("sortOrder")
+    .optional()
+    .isIn(["asc", "desc"])
+    .withMessage("Sort order must be 'asc' or 'desc'")
+    .default("desc"),
+];
+
+// Export all validations with business type checks
 module.exports = {
   // Create Property
   create: [
-    validateTitle,
-    validateSlug,
     ...propertyValidations,
     ...amenityValidations,
     ...imageValidations,
-    body("merchantId")
-      .if((value, { req }) => {
-        // Only validate merchantId if user is admin
-        return req.user && req.user.accountType === "admin";
-      })
-      .notEmpty()
-      .withMessage("merchantId is required when creating as admin")
-      .isInt()
-      .withMessage("merchantId must be an integer")
-      .custom(async (value) => {
-        const merchant = await MerchantProfile.findByPk(value);
-        if (!merchant) throw new Error("Merchant profile not found");
-        return true;
-      }),
+    ...statusValidations,
   ],
 
   // List Properties
   list: queryValidations,
 
   // Get by ID
-  getById: [idParam],
+  getById: [propertyIdParam],
 
   // Update Property
   update: [
-    idParam,
-    validateTitle.optional(),
-    validateSlug,
+    propertyIdParam,
     ...propertyValidations.map((v) => v.optional()),
     ...amenityValidations.map((v) => v.optional()),
     ...imageValidations.map((v) => v.optional()),
+    ...statusValidations.map((v) => v.optional()),
   ],
 
   // Delete Property
-  delete: [idParam],
+  delete: [propertyIdParam],
 
   // Restore Property
-  restore: [idParam],
-
-  // Toggle Active Status
-  toggleStatus: [idParam],
+  restore: [propertyIdParam],
 
   // Verify Property
-  verify: verifyPropertyValidation,
+  verify: [
+    propertyIdParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Update Amenities
-  updateAmenities: updateAmenitiesValidation,
+  // Update Status
+  updateStatus: [
+    propertyIdParam,
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Update Images
-  updateImages: updateImagesValidation,
+  // Update Availability Status
+  updateAvailability: [
+    propertyIdParam,
+    body("availabilityStatus")
+      .isIn(["available", "unavailable", "maintenance", "archived"])
+      .withMessage("Invalid availability status"),
+  ],
 
-  // Delete Image
-  deleteImage: deleteImageValidation,
+  // Update Approval Status
+  updateApproval: [
+    propertyIdParam,
+    body("approvalStatus")
+      .isIn(["pending", "approved", "rejected", "changes_requested"])
+      .withMessage("Invalid approval status"),
+    body("rejectionReason")
+      .if(body("approvalStatus").equals("rejected"))
+      .notEmpty()
+      .withMessage("Rejection reason is required when status is rejected")
+      .optional()
+      .isString()
+      .withMessage("Rejection reason must be a string")
+      .isLength({ max: 1000 })
+      .withMessage("Rejection reason must be less than 1000 characters"),
+  ],
+/* 
+  // Image operations
+  addImages: [propertyIdParam],
+  updateImages: [propertyIdParam, ...imageValidations],
+  deleteImage: imageOperationValidations,
+  setFeaturedImage: imageOperationValidations, */
 
-  // Set Featured Image
-  setFeaturedImage: setFeaturedImageValidation,
+  // Amenity operations
+  updateAmenities: [
+    propertyIdParam,
+    body("amenities")
+      .isArray({ min: 1 })
+      .withMessage("Amenities array cannot be empty"),
+    ...amenityValidations,
+  ],
 
-  /* admin update approval status */
-  updateApprovalStatus: updateApprovalStatus,
-
-  /* public property ID validation */
-  getApprovedPropertyById: [publicIdParam],
+  // Public property ID validation (no ownership check)
+  publicGetById: [
+    validateIdParam("id", Property, {
+      paranoid: false,
+      where: {
+        isActive: true,
+        approvalStatus: "approved",
+      },
+    }),
+  ],
 };

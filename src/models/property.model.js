@@ -31,12 +31,6 @@ class Property extends Model {
       foreignKey: "propertyId",
       as: "rooms",
     });
-
-    this.hasOne(models.PropertySetting, {
-      foreignKey: "propertyId",
-      as: "settings",
-      onDelete: "CASCADE",
-    });
   }
 
   // Helper method to add images
@@ -129,6 +123,7 @@ Property.init(
     merchantId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      unique: true,
       references: {
         model: "merchant_profiles",
         key: "id",
@@ -259,6 +254,20 @@ Property.init(
         isUrl: { msg: "Invalid website URL" },
       },
     },
+    facebookUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: true,
+      },
+    },
+    instagramUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: true,
+      },
+    },
     availabilityStatus: {
       type: DataTypes.ENUM(
         "available",
@@ -307,7 +316,7 @@ Property.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: {  },
     },
     scopes: {
       inactive: {
@@ -337,6 +346,15 @@ Property.init(
           property.approvalStatus === "approved"
         ) {
           property.approvedAt = new Date();
+        }
+      },
+      beforeValidate: (property) => {
+        if (property.changed("title") || !property.slug) {
+          property.slug = slugify(property.title || "", {
+            lower: true,
+            strict: true,
+            remove: /[*+~.()'"!:@]/g,
+          });
         }
       },
     },

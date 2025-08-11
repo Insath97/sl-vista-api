@@ -22,23 +22,21 @@ const activites = require("./src/routes/admin/activities.routes");
 const guidesRoutes = require("./src/routes/admin/guides.routes");
 const localArtistsType = require("./src/routes/admin/localAritstsType.routes");
 const localArtistRoutes = require("./src/routes/admin/localArtists.routes");
-const customerHomeroutes = require("./src/routes/Customer/home.routes");
-const adminPropertyRoutes = require("./src/routes/admin/property.routes");
-/* const propertyRoutes = require("./src/routes/Merchant/property.routes"); */
+const merchantRoutes = require("./src/routes/merchant.routes");
+const propertyRoutes = require("./src/routes/property.routes");
+
 const adminhHomestaysRoutes = require("./src/routes/admin/homestays.routes");
-const propertySettingRoutes = require("./src/routes/Merchant/propertySetting.routes");
 const homestayRoutes = require("./src/routes/Merchant/homestay.routes");
 const customerRegistrationRoutes = require("./src/routes/Customer/customer.routes");
 const customerListRoutes = require("./src/routes/admin/customerList.routes");
-const commonRoutes = require("./src/routes/common.routes");
+
 const bookingRoutes = require("./src/routes/booking.routes");
 const permissionRoutes = require("./src/routes/permission.routes");
 const roleRoutes = require("./src/routes/roles.routes");
 const userRoutes = require("./src/routes/user.routes");
 const roomtypeRoutes = require("./src/routes/roomType.routes");
 const roomRoutes = require("./src/routes/room.routes");
-const merchantRoutes = require("./src/routes/merchant.routes");
-const propertyRoutes = require("./src/routes/property.routes");
+
 
 const app = express();
 
@@ -89,6 +87,7 @@ app.use("/api/v1/guides", guidesRoutes);
 app.use("/api/v1/shopping", shopping);
 app.use("/api/v1/food-and-beverages", foodAndBeverages);
 app.use("/api/v1/merchant", merchantRoutes);
+app.use("/api/v1/properties", propertyRoutes);
 
 // 1st api
 app.get("/", (req, res) => {
@@ -96,7 +95,6 @@ app.get("/", (req, res) => {
 });
 
 // admin
-app.use("/api/v1/admin/properties", adminPropertyRoutes);
 app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
 app.use("/api/v1/admin/permissions", permissionRoutes);
@@ -104,29 +102,24 @@ app.use("/api/v1/admin/roles", roleRoutes);
 app.use("/api/v1/admin/users", userRoutes);
 
 // merchant routes
-/* app.use("/api/v1/merchants", merchantRoutes); */
-app.use("/api/v1/merchants/properties", propertyRoutes);
-app.use("/api/v1/merchants/property-settings", propertySettingRoutes);
 app.use("/api/v1/merchants/homestays", homestayRoutes);
 
 // common routes
-app.use("/api/v1", commonRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
-/* app.use("/api/v1/rooms", roomRoutes); */
+/* app.use("/api/v1/rooms", roomRoutes); */ 
 
 /* merchant registration and other admin level routes */
 
-app.use("/api/v1/properties", propertyRoutes);
+
 
 /* customer routes */
 app.use("/api/v1/customer", customerRegistrationRoutes);
-app.use("/api/v1/customer/list", customerHomeroutes);
 app.use("/api/v1/booking", bookingRoutes);
 
 // Sync database and start server
 sequelize
   .sync({
-    /*     alter: true, */
+  alter: true,
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
