@@ -52,10 +52,16 @@ User.init(
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      unique: {
+        msg: "Email already in use",
+      },
       validate: {
-        isEmail: true,
-        notEmpty: true,
+        isEmail: {
+          msg: "Invalid email format",
+        },
+        notEmpty: {
+          msg: "Email is required",
+        },
       },
     },
     password: {

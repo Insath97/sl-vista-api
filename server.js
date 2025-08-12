@@ -10,6 +10,7 @@ const logger = require("./src/config/logger");
 
 /* routes import */
 const languagesRoutes = require("./src/routes/languagesRoutes");
+const customerRoutes = require("./src/routes/customer.routes");
 const authRoutes = require("./src/routes/authRoutes");
 const adminRoutes = require("./src/routes/adminRoutes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
@@ -25,10 +26,6 @@ const localArtistRoutes = require("./src/routes/admin/localArtists.routes");
 const merchantRoutes = require("./src/routes/merchant.routes");
 const propertyRoutes = require("./src/routes/property.routes");
 const homestaysRoutes = require("./src/routes/homestay.routes");
-
-
-const customerRegistrationRoutes = require("./src/routes/Customer/customer.routes");
-const customerListRoutes = require("./src/routes/admin/customerList.routes");
 
 const bookingRoutes = require("./src/routes/booking.routes");
 const permissionRoutes = require("./src/routes/permission.routes");
@@ -74,6 +71,7 @@ app.use((req, res, next) => {
 */
 app.use("/api/v1/admins", adminRoutes);
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/customers", customerRoutes);
 app.use("/api/v1/languages", languagesRoutes);
 app.use("/api/v1/amenities", amenityRoutes);
 app.use("/api/v1/transport-types", transportTypeRoutes);
@@ -95,7 +93,6 @@ app.get("/", (req, res) => {
 });
 
 // admin
-app.use("/api/v1/admin/customers", customerListRoutes);
 app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/admin/roles", roleRoutes);
 app.use("/api/v1/admin/users", userRoutes);
@@ -105,13 +102,12 @@ app.use("/api/v1/room-type", roomtypeRoutes);
 /* app.use("/api/v1/rooms", roomRoutes); */
 
 /* customer routes */
-app.use("/api/v1/customer", customerRegistrationRoutes);
 app.use("/api/v1/booking", bookingRoutes);
 
 // Sync database and start server
 sequelize
   .sync({
-    alter: true,
+/*     alter: true, */
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
