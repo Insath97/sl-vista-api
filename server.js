@@ -26,7 +26,7 @@ const merchantRoutes = require("./src/routes/merchant.routes");
 const propertyRoutes = require("./src/routes/property.routes");
 const homestaysRoutes = require("./src/routes/homestay.routes");
 
-const adminhHomestaysRoutes = require("./src/routes/admin/homestays.routes");
+
 const customerRegistrationRoutes = require("./src/routes/Customer/customer.routes");
 const customerListRoutes = require("./src/routes/admin/customerList.routes");
 
@@ -95,7 +95,6 @@ app.get("/", (req, res) => {
 });
 
 // admin
-app.use("/api/v1/admin/homestays", adminhHomestaysRoutes);
 app.use("/api/v1/admin/customers", customerListRoutes);
 app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/admin/roles", roleRoutes);

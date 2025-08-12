@@ -3,72 +3,145 @@ const { Op } = require("sequelize");
 const HomeStay = require("../../models/homeStay.model");
 const Amenity = require("../../models/amenity.model");
 const HomeStayImage = require("../../models/homestayImage.model");
-const Property = require("../../models/property.model");
 const User = require("../../models/user.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
 
-// Common validation rules
-const idParam = param("id")
-  .isInt()
-  .withMessage("Invalid ID format")
+// Common validation helpers
+const validateIdParam = (paramName, model, options = {}) => {
+  return param(paramName)
+    .isInt({ min: 1 })
+    .withMessage(`Invalid ${paramName} format`)
+    .toInt()
+    .custom(async (value, { req }) => {
+      const record = await model.findByPk(value, options);
+      if (!record) {
+        throw new Error(`${model.name} not found`);
+      }
+      return true;
+    });
+};
+
+const validateMerchantOwnership = async (homestayId, userId) => {
+  const merchant = await MerchantProfile.findOne({
+    where: { userId },
+    attributes: ["id", "businessType"],
+  });
+
+  if (!merchant) {
+    throw new Error("Merchant profile not found");
+  }
+
+  // Check business type restrictions
+  if (!["homestay", "both"].includes(merchant.businessType)) {
+    throw new Error("Your business type does not allow homestay management");
+  }
+
+  const homestay = await HomeStay.findOne({
+    where: {
+      id: homestayId,
+      merchantId: merchant.id,
+    },
+  });
+
+  if (!homestay) {
+    throw new Error("Homestay not found or not owned by your merchant account");
+  }
+
+  return true;
+};
+
+// Homestay ID validation with ownership and business type check
+const homestayIdParam = param("id")
+  .isInt({ min: 1 })
+  .withMessage("Invalid homestay ID format")
+  .toInt()
   .custom(async (value, { req }) => {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      paranoid: false,
+    if (req.user.accountType === "admin") {
+      const homestay = await HomeStay.findByPk(value, { paranoid: false });
+      if (!homestay) throw new Error("Homestay not found");
+      return true;
+    }
+
+    return validateMerchantOwnership(value, req.user.id);
+  });
+
+// Business type access validation
+const businessTypeAccessValidation = body().custom(async (value, { req }) => {
+  if (req.user?.accountType === "merchant") {
+    const merchant = await MerchantProfile.findOne({
+      where: { userId: req.user.id },
+      attributes: ["businessType"],
     });
 
-    if (!user || !user.merchantProfile) {
+    if (!merchant) {
       throw new Error("Merchant profile not found");
     }
 
-    const homestay = await HomeStay.findOne({
-      where: {
-        id: value,
-        propertyId: {
-          [Op.in]: sequelize.literal(`(
-            SELECT id FROM properties 
-            WHERE merchantId = ${user.merchantProfile.id}
-          )`),
+    if (!["homestay", "both"].includes(merchant.businessType)) {
+      throw new Error("Your business type does not allow homestay access");
+    }
+  }
+  return true;
+});
+
+// Homestay basic validations
+const homestayValidations = [
+  businessTypeAccessValidation,
+
+  body("title")
+    .trim()
+    .notEmpty()
+    .withMessage("Title is required")
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Title must be 2-100 characters")
+    .custom(async (value, { req }) => {
+      const where = {
+        title: { [Op.iLike]: value },
+        [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+      };
+
+      if (req.user.accountType === "merchant") {
+        const merchant = await MerchantProfile.findOne({
+          where: { userId: req.user.id },
+          attributes: ["id"],
+        });
+        if (!merchant) throw new Error("Merchant profile not found");
+        where.merchantId = merchant.id;
+      } else if (req.body.merchantId) {
+        where.merchantId = req.body.merchantId;
+      }
+
+      const exists = await HomeStay.findOne({ where });
+      if (exists) {
+        throw new Error("This title is already in use for this merchant");
+      }
+      return true;
+    }),
+
+  body("slug")
+    .optional()
+    .trim()
+    .matches(/^[a-z0-9-]+$/)
+    .withMessage("Slug can only contain lowercase letters, numbers and hyphens")
+    .isLength({ max: 100 })
+    .withMessage("Slug must be less than 100 characters")
+    .custom(async (value, { req }) => {
+      const exists = await HomeStay.findOne({
+        where: {
+          slug: value,
+          [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
         },
-      },
-      paranoid: false,
-    });
-    if (!homestay) {
-      throw new Error("HomeStay not found or not owned by merchant");
-    }
-  });
+      });
+      if (exists) throw new Error("This slug is already in use");
+      return true;
+    }),
 
-const validateName = body("name")
-  .trim()
-  .isLength({ min: 2, max: 100 })
-  .withMessage("Name must be 2-100 characters")
-  .custom(async (value, { req }) => {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
+  body("description")
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage("Description must be less than 2000 characters"),
 
-    if (!user || !user.merchantProfile) {
-      throw new Error("Merchant profile not found");
-    }
-
-    const where = {
-      name: value,
-      merchantId: user.merchantProfile.id,
-    };
-
-    if (req.params?.id) {
-      where.id = { [Op.ne]: req.params.id };
-    }
-
-    const exists = await HomeStay.findOne({ where });
-    if (exists) {
-      throw new Error("You already have a homestay with this name");
-    }
-    return true;
-  });
-
-// HomeStay basic validations
-const homeStayValidations = [
   body("unitType")
     .isIn([
       "entire_home",
@@ -80,23 +153,17 @@ const homeStayValidations = [
     ])
     .withMessage("Invalid unit type"),
 
-  body("description")
-    .optional()
-    .trim()
-    .isLength({ max: 2000 })
-    .withMessage("Description must be less than 2000 characters"),
-
   body("maxGuests")
-    .isInt({ min: 1, max: 20 })
-    .withMessage("Max guests must be between 1-20"),
+    .isInt({ min: 1, max: 40 })
+    .withMessage("Max guests must be between 1 and 40"),
 
   body("maxChildren")
     .isInt({ min: 0 })
-    .withMessage("Max children must be 0 or more"),
+    .withMessage("Max children cannot be negative"),
 
   body("maxInfants")
     .isInt({ min: 0 })
-    .withMessage("Max infants must be 0 or more"),
+    .withMessage("Max infants cannot be negative"),
 
   body("bedroomCount")
     .isInt({ min: 1 })
@@ -108,11 +175,11 @@ const homeStayValidations = [
 
   body("attachedBathrooms")
     .isInt({ min: 0 })
-    .withMessage("Attached bathrooms must be 0 or more"),
+    .withMessage("Attached bathrooms cannot be negative"),
 
   body("sharedBathrooms")
     .isInt({ min: 0 })
-    .withMessage("Shared bathrooms must be 0 or more"),
+    .withMessage("Shared bathrooms cannot be negative"),
 
   body("bathroomType")
     .isIn(["private", "shared", "shared_floor", "none"])
@@ -125,10 +192,7 @@ const homeStayValidations = [
     .isInt()
     .withMessage("Floor number must be an integer"),
 
-  body("size")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Size must be a positive integer"),
+  body("size").optional().isInt().withMessage("Size must be an integer"),
 
   body("hasKitchen").isBoolean().withMessage("hasKitchen must be a boolean"),
 
@@ -156,25 +220,25 @@ const homeStayValidations = [
   body("basePrice")
     .isDecimal()
     .withMessage("Base price must be a decimal number")
-    .custom((value) => value >= 0)
+    .custom((value) => parseFloat(value) >= 0)
     .withMessage("Base price cannot be negative"),
 
   body("cleaningFee")
     .isDecimal()
     .withMessage("Cleaning fee must be a decimal number")
-    .custom((value) => value >= 0)
+    .custom((value) => parseFloat(value) >= 0)
     .withMessage("Cleaning fee cannot be negative"),
 
   body("securityDeposit")
     .isDecimal()
     .withMessage("Security deposit must be a decimal number")
-    .custom((value) => value >= 0)
+    .custom((value) => parseFloat(value) >= 0)
     .withMessage("Security deposit cannot be negative"),
 
   body("extraGuestFee")
     .isDecimal()
     .withMessage("Extra guest fee must be a decimal number")
-    .custom((value) => value >= 0)
+    .custom((value) => parseFloat(value) >= 0)
     .withMessage("Extra guest fee cannot be negative"),
 
   body("minimumStay")
@@ -191,134 +255,167 @@ const homeStayValidations = [
     .isBoolean()
     .withMessage("eventsAllowed must be a boolean"),
 
+  body("checkInTime")
+    .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage("Invalid check-in time format (HH:MM)")
+    .default("14:00"),
+
+  body("checkOutTime")
+    .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage("Invalid check-out time format (HH:MM)")
+    .default("12:00"),
+
+  body("address")
+    .trim()
+    .notEmpty()
+    .withMessage("Address is required")
+    .isLength({ min: 10, max: 255 })
+    .withMessage("Address must be between 10-255 characters"),
+
+  body("city")
+    .trim()
+    .notEmpty()
+    .withMessage("City is required")
+    .isLength({ max: 50 })
+    .withMessage("City must be less than 50 characters"),
+
+  body("district")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("District must be less than 50 characters"),
+
+  body("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
+
+  body("country")
+    .optional()
+    .default("Sri Lanka")
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Country must be less than 50 characters"),
+
+  body("postalCode")
+    .optional()
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Postal code must be less than 20 characters"),
+
+  body("cancellationPolicy")
+    .isIn(["flexible", "moderate", "strict", "non_refundable"])
+    .withMessage("Invalid cancellation policy")
+    .default("moderate"),
+
+  body("phone")
+    .trim()
+    .notEmpty()
+    .withMessage("Phone is required")
+    .isLength({ max: 20 })
+    .withMessage("Phone must be less than 20 characters"),
+
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be less than 100 characters"),
+
+  body("website")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid website URL")
+    .isLength({ max: 255 })
+    .withMessage("Website URL must be less than 255 characters"),
+
+  body("facebookUrl")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid Facebook URL"),
+
+  body("instagramUrl")
+    .optional()
+    .trim()
+    .isURL()
+    .withMessage("Invalid Instagram URL"),
+
+  body("latitude")
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("Latitude must be between -90 and 90"),
+
+  body("longitude")
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("Longitude must be between -180 and 180"),
+
+  body("isActive")
+    .optional()
+    .isBoolean()
+    .withMessage("isActive must be a boolean value")
+    .toBoolean(),
+
   body("vistaVerified")
     .optional()
     .isBoolean()
-    .withMessage("vistaVerified must be a boolean"),
+    .withMessage("vistaVerified must be a boolean value")
+    .toBoolean(),
+
+  body("merchantId")
+    .if((value, { req }) => req.user.accountType === "admin")
+    .notEmpty()
+    .withMessage("merchantId is required for admin")
+    .isInt()
+    .withMessage("merchantId must be an integer")
+    .custom(async (value) => {
+      const merchant = await MerchantProfile.findByPk(value);
+      if (!merchant) throw new Error("Merchant not found");
+      return true;
+    }),
+];
+
+// Status validations
+const statusValidations = [
+  body("approvalStatus")
+    .optional()
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
 
   body("availabilityStatus")
     .optional()
     .isIn(["available", "unavailable", "maintenance", "archived"])
     .withMessage("Invalid availability status"),
 
-  body("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-
   body("rejectionReason")
     .optional()
     .isString()
     .withMessage("Rejection reason must be a string")
     .isLength({ max: 1000 })
-    .withMessage("Rejection reason must be less than 1000 characters"),
-];
-
-// Query validations
-const queryValidations = [
-  query("includeInactive")
-    .optional()
-    .isBoolean()
-    .withMessage("includeInactive must be a boolean"),
-
-  query("includeDeleted")
-    .optional()
-    .isBoolean()
-    .withMessage("includeDeleted must be a boolean"),
-
-  query("includeImages")
-    .optional()
-    .isBoolean()
-    .withMessage("includeImages must be a boolean"),
-
-  query("includeAmenities")
-    .optional()
-    .isBoolean()
-    .withMessage("includeAmenities must be a boolean"),
-
-  query("unitType")
-    .optional()
-    .isIn([
-      "entire_home",
-      "private_room",
-      "shared_room",
-      "guest_suite",
-      "villa",
-      "cottage",
-    ])
-    .withMessage("Invalid unit type"),
-
-  query("minGuests")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Minimum guests must be at least 1"),
-
-  query("minBedrooms")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Minimum bedrooms must be at least 1"),
-
-  query("minBathrooms")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Minimum bathrooms must be at least 1"),
-
-  query("minPrice")
-    .optional()
-    .isDecimal()
-    .withMessage("Minimum price must be a decimal number"),
-
-  query("maxPrice")
-    .optional()
-    .isDecimal()
-    .withMessage("Maximum price must be a decimal number"),
-
-  query("hasKitchen")
-    .optional()
-    .isBoolean()
-    .withMessage("hasKitchen must be a boolean"),
-
-  query("hasPoolAccess")
-    .optional()
-    .isBoolean()
-    .withMessage("hasPoolAccess must be a boolean"),
-
-  query("availabilityStatus")
-    .optional()
-    .isIn(["available", "unavailable", "maintenance", "archived"])
-    .withMessage("Invalid availability status"),
-
-  query("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-
-  query("page")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Page must be a positive integer"),
-
-  query("limit")
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .withMessage("Rejection reason must be less than 1000 characters")
+    .custom((value, { req }) => {
+      if (req.body.approvalStatus === "rejected" && !value) {
+        throw new Error("Rejection reason is required when status is rejected");
+      }
+      return true;
+    }),
 ];
 
 // Amenity validations
 const amenityValidations = [
   body("amenities")
     .optional()
+    .isArray()
+    .withMessage("Amenities must be an array")
     .customSanitizer((value) => {
       if (typeof value === "string") {
         return value.split(",").map((id) => parseInt(id.trim()));
       }
       return value;
-    })
-    .custom((value) => {
-      if (value && !Array.isArray(value)) {
-        throw new Error("Amenities must be an array or comma-separated string");
-      }
-      return true;
     }),
 
   body("amenities.*")
@@ -337,11 +434,31 @@ const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),
 
   body("images.*.imageUrl")
-    .optional()
+    .if(body("images.*.imageUrl").exists())
     .isURL()
     .withMessage("Image URL must be a valid URL")
     .isLength({ max: 512 })
     .withMessage("Image URL must be less than 512 characters"),
+
+  body("images.*.s3Key")
+    .optional()
+    .isString()
+    .withMessage("S3 key must be a string"),
+
+  body("images.*.fileName")
+    .optional()
+    .isString()
+    .withMessage("File name must be a string"),
+
+  body("images.*.size")
+    .optional()
+    .isInt()
+    .withMessage("File size must be an integer"),
+
+  body("images.*.mimetype")
+    .optional()
+    .isString()
+    .withMessage("MIME type must be a string"),
 
   body("images.*.caption")
     .optional()
@@ -361,168 +478,235 @@ const imageValidations = [
     .withMessage("sortOrder must be an integer"),
 ];
 
-const updateAmenitiesValidation = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  body("amenities")
-    .isArray({ min: 1 })
-    .withMessage("Amenities array cannot be empty"),
-  ...amenityValidations,
-];
+// Query validations with business type check
+const queryValidations = [
+  query().custom(async (value, { req }) => {
+    if (req.user?.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+        attributes: ["businessType"],
+      });
 
-const updateImagesValidation = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  body("images")
-    .isArray({ min: 1 })
-    .withMessage("Images array cannot be empty"),
-  ...imageValidations,
-  body("images.*.id")
-    .optional()
-    .isInt()
-    .withMessage("Image ID must be an integer"),
-];
+      if (!merchant) {
+        throw new Error("Merchant profile not found");
+      }
 
-const deleteImageValidation = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  param("imageId").isInt().withMessage("Invalid image ID"),
-];
-
-const setFeaturedImageValidation = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  param("imageId").isInt().withMessage("Invalid image ID"),
-];
-
-const verifyHomeStayValidation = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  body("verified")
-    .optional()
-    .isBoolean()
-    .withMessage("verified must be a boolean"),
-  body("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-  body("rejectionReason")
-    .optional()
-    .isString()
-    .withMessage("rejectionReason must be a string"),
-];
-
-const updateApprovalStatus = [
-  param("id").isInt().withMessage("Invalid homestay ID"),
-  body("approvalStatus")
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-  body("rejectionReason")
-    .if(body("approvalStatus").equals("rejected"))
-    .notEmpty()
-    .withMessage("Rejection reason is required when status is rejected")
-    .optional()
-    .isString()
-    .withMessage("Rejection reason must be a string")
-    .isLength({ max: 1000 })
-    .withMessage("Rejection reason must be less than 1000 characters"),
-];
-
-// Public homestay ID validation (no merchant ownership check)
-const publicIdParam = param("id")
-  .isInt()
-  .withMessage("Invalid homestay ID format")
-  .custom(async (value) => {
-    const homestay = await HomeStay.findByPk(value, { paranoid: false });
-    if (!homestay) {
-      throw new Error("HomeStay not found");
+      if (!["homestay", "both"].includes(merchant.businessType)) {
+        throw new Error("Your business type does not allow homestay access");
+      }
     }
     return true;
-  });
+  }),
 
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer")
+    .toInt()
+    .default(1),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100")
+    .toInt()
+    .default(10),
+
+  query("search")
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query too long"),
+
+  query("unitType")
+    .optional()
+    .isIn([
+      "entire_home",
+      "private_room",
+      "shared_room",
+      "guest_suite",
+      "villa",
+      "cottage",
+    ])
+    .withMessage("Invalid unit type"),
+
+  query("city")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("City must be less than 50 characters"),
+
+  query("district")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("District must be less than 50 characters"),
+
+  query("province")
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Province must be less than 50 characters"),
+
+  query("approvalStatus")
+    .optional()
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
+
+  query("availabilityStatus")
+    .optional()
+    .isIn(["available", "unavailable", "maintenance", "archived"])
+    .withMessage("Invalid availability status"),
+
+  query("isActive")
+    .optional()
+    .isBoolean()
+    .withMessage("isActive must be a boolean")
+    .toBoolean(),
+
+  query("vistaVerified")
+    .optional()
+    .isBoolean()
+    .withMessage("vistaVerified must be a boolean")
+    .toBoolean(),
+
+  query("includeDeleted")
+    .optional()
+    .isBoolean()
+    .withMessage("includeDeleted must be a boolean")
+    .toBoolean(),
+
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean")
+    .toBoolean(),
+
+  query("includeAmenities")
+    .optional()
+    .isBoolean()
+    .withMessage("includeAmenities must be a boolean")
+    .toBoolean(),
+
+  query("includeMerchant")
+    .optional()
+    .isBoolean()
+    .withMessage("includeMerchant must be a boolean")
+    .toBoolean(),
+
+  query("sortBy")
+    .optional()
+    .isIn([
+      "createdAt",
+      "updatedAt",
+      "title",
+      "city",
+      "basePrice",
+      "approvalStatus",
+      "vistaVerified",
+    ])
+    .withMessage("Invalid sort field"),
+
+  query("sortOrder")
+    .optional()
+    .isIn(["asc", "desc"])
+    .withMessage("Sort order must be 'asc' or 'desc'")
+    .default("desc"),
+];
+
+// Export all validations with business type checks
 module.exports = {
-  // Create HomeStay
+  // Create Homestay
   create: [
-    validateName,
-    ...homeStayValidations,
+    ...homestayValidations,
     ...amenityValidations,
     ...imageValidations,
+    ...statusValidations,
   ],
 
-  // List HomeStays
+  // List Homestays
   list: queryValidations,
 
   // Get by ID
-  getById: [idParam],
+  getById: [homestayIdParam],
 
-  // Update HomeStay
+  // Update Homestay
   update: [
-    idParam,
-    validateName.optional(),
-    ...homeStayValidations.map((v) => v.optional()),
+    homestayIdParam,
+    ...homestayValidations.map((v) => v.optional()),
     ...amenityValidations.map((v) => v.optional()),
     ...imageValidations.map((v) => v.optional()),
+    ...statusValidations.map((v) => v.optional()),
   ],
 
-  // Delete HomeStay
-  delete: [idParam],
+  // Delete Homestay
+  delete: [homestayIdParam],
 
-  // Restore HomeStay
-  restore: [idParam],
+  // Restore Homestay
+  restore: [homestayIdParam],
 
-  // Toggle Active Status
-  toggleStatus: [idParam],
+  // Verify Homestay
+  verify: [
+    homestayIdParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Verify HomeStay
-  verify: verifyHomeStayValidation,
+  // Update Status
+  updateStatus: [
+    homestayIdParam,
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Update Amenities
-  updateAmenities: updateAmenitiesValidation,
+  // Update Availability Status
+  updateAvailability: [
+    homestayIdParam,
+    body("availabilityStatus")
+      .isIn(["available", "unavailable", "maintenance", "archived"])
+      .withMessage("Invalid availability status"),
+  ],
 
-  // Update Images
-  updateImages: updateImagesValidation,
+  // Update Approval Status
+  updateApproval: [
+    homestayIdParam,
+    body("approvalStatus")
+      .isIn(["pending", "approved", "rejected", "changes_requested"])
+      .withMessage("Invalid approval status"),
+    body("rejectionReason")
+      .if(body("approvalStatus").equals("rejected"))
+      .notEmpty()
+      .withMessage("Rejection reason is required when status is rejected")
+      .optional()
+      .isString()
+      .withMessage("Rejection reason must be a string")
+      .isLength({ max: 1000 })
+      .withMessage("Rejection reason must be less than 1000 characters"),
+  ],
 
-  // Delete Image
-  deleteImage: deleteImageValidation,
+  // Amenity operations
+  updateAmenities: [
+    homestayIdParam,
+    body("amenities")
+      .isArray({ min: 1 })
+      .withMessage("Amenities array cannot be empty"),
+    ...amenityValidations,
+  ],
 
-  // Set Featured Image
-  setFeaturedImage: setFeaturedImageValidation,
-
-  /* admin update approval status */
-  updateApprovalStatus: updateApprovalStatus,
-
-  /* public homestay ID validation */
-  getApprovedHomeStayById: [publicIdParam],
+  // Public homestay ID validation (no ownership check)
+  publicGetById: [
+    validateIdParam("id", HomeStay, {
+      paranoid: false,
+      where: {
+        isActive: true,
+        approvalStatus: "approved",
+      },
+    }),
+  ],
 };
-
-exports.updateApprovalStatusValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid homestay ID")
-    .custom(async (id) => {
-      const homestay = await HomeStay.findByPk(id);
-      if (!homestay) throw new Error("Homestay not found");
-      return true;
-    }),
-
-  body("approvalStatus")
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-
-  body("rejectionReason")
-    .if(body("approvalStatus").equals("rejected"))
-    .notEmpty()
-    .withMessage("Rejection reason is required when status is rejected")
-    .isString()
-    .withMessage("Rejection reason must be a string")
-    .isLength({ max: 1000 })
-    .withMessage("Rejection reason must be less than 1000 characters"),
-];
-
-exports.toggleVistaVerificationValidation = [
-  param("id")
-    .isInt()
-    .withMessage("Invalid homestay ID")
-    .custom(async (id) => {
-      const homestay = await HomeStay.findByPk(id);
-      if (!homestay) throw new Error("Homestay not found");
-      return true;
-    }),
-
-  body("verified").isBoolean().withMessage("Verified must be a boolean value"),
-];
