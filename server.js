@@ -107,7 +107,7 @@ app.use("/api/v1/booking", bookingRoutes);
 // Sync database and start server
 sequelize
   .sync({
-/*     alter: true, */
+    alter: true,
   }) // Auto-create or update tables
   .then(async () => {
     console.log("Models synchronized!");
