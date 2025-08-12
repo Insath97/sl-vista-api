@@ -98,22 +98,6 @@ class HomeStay extends Model {
 
     return await image.update({ isFeatured: true });
   }
-
-  // Toggle amenity availability
-  async toggleAmenityAvailability(amenityId) {
-    const homestayAmenity = await this.sequelize.models.HomeStayAmenity.findOne(
-      {
-        where: { homestayId: this.id, amenityId },
-      }
-    );
-
-    if (!homestayAmenity) {
-      throw new Error("Amenity not found for this homestay");
-    }
-
-    homestayAmenity.isAvailable = !homestayAmenity.isAvailable;
-    return await homestayAmenity.save();
-  }
 }
 
 HomeStay.init(
@@ -132,12 +116,27 @@ HomeStay.init(
         key: "id",
       },
     },
-    name: {
+    title: {
       type: DataTypes.STRING(100),
       allowNull: false,
+      set(value) {
+        this.setDataValue("title", value.trim());
+        if (!this.slug) {
+          this.slug = slugify(value, {
+            lower: true,
+            strict: true,
+            remove: /[*+~.()'"!:@]/g,
+          });
+        }
+      },
+    },
+    slug: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      unique: { msg: "This slug is already in use" },
       validate: {
+        is: { args: /^[a-z0-9-]+$/, msg: "Invalid slug format" },
         notEmpty: true,
-        len: [2, 100],
       },
     },
     description: {
@@ -289,10 +288,108 @@ HomeStay.init(
       allowNull: false,
       defaultValue: false,
     },
+    checkInTime: {
+      type: DataTypes.TIME,
+      allowNull: false,
+      defaultValue: "14:00",
+    },
+    checkOutTime: {
+      type: DataTypes.TIME,
+      allowNull: false,
+      defaultValue: "12:00",
+    },
     vistaVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       allowNull: false,
+    },
+    address: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: "Address is required" },
+        len: {
+          args: [10, 255],
+          msg: "Address must be between 10 and 255 characters",
+        },
+      },
+    },
+    city: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+    },
+    district: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    province: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    country: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "Sri Lanka",
+    },
+    postalCode: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    cancellationPolicy: {
+      type: DataTypes.ENUM("flexible", "moderate", "strict", "non_refundable"),
+      allowNull: false,
+      defaultValue: "moderate",
+    },
+    phone: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      validate: {
+        notEmpty: { msg: "Phone number is required" },
+      },
+    },
+    email: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      validate: {
+        isEmail: { msg: "Invalid email format" },
+      },
+    },
+    website: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: { msg: "Invalid website URL" },
+      },
+    },
+    facebookUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: true,
+      },
+    },
+    instagramUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: true,
+      },
+    },
+    latitude: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        min: -90,
+        max: 90,
+      },
+    },
+    longitude: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        min: -180,
+        max: 180,
+      },
     },
     availabilityStatus: {
       type: DataTypes.ENUM(
@@ -346,7 +443,7 @@ HomeStay.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: {},
     },
     hooks: {
       beforeUpdate: (homestay) => {
@@ -362,6 +459,15 @@ HomeStay.init(
           homestay.approvalStatus === "approved"
         ) {
           homestay.approvedAt = new Date();
+        }
+      },
+      beforeValidate: (homeStay) => {
+        if (homeStay.changed("title") || !homeStay.slug) {
+          homeStay.slug = slugify(homeStay.title || "", {
+            lower: true,
+            strict: true,
+            remove: /[*+~.()'"!:@]/g,
+          });
         }
       },
     },
