@@ -35,7 +35,7 @@ RoomType.init(
     timestamps: true,
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: {},
     },
   }
 );

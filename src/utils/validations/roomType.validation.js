@@ -1,12 +1,13 @@
 const { body, param, query } = require("express-validator");
-const { Op } = require("sequelize"); // Add this line
+const { Op } = require("sequelize");
 const RoomType = require("../../models/roomType.model");
 
-// Common validation rules
-const idParam = param("id")
-  .isInt()
+// Common validation helpers
+const validateIdParam = param("id")
+  .isInt({ min: 1 })
   .withMessage("Invalid ID format")
-  .custom(async (value) => {
+  .toInt()
+  .custom(async (value, { req }) => {
     const roomType = await RoomType.findByPk(value, { paranoid: false });
     if (!roomType) {
       throw new Error("Room type not found");
@@ -21,10 +22,12 @@ const validateName = body("name")
   .isLength({ min: 2, max: 100 })
   .withMessage("Name must be 2-100 characters")
   .custom(async (value, { req }) => {
-    const where = { name: value };
-    
+    const where = { 
+      name: { [Op.like]: value }  // Changed from Op.iLike to Op.like
+    };
+
     if (req.params?.id) {
-      where.id = { [Op.ne]: req.params.id }; // Now Op is defined
+      where.id = { [Op.ne]: req.params.id };
     }
 
     const exists = await RoomType.findOne({ where });
@@ -47,7 +50,8 @@ const roomTypeValidations = [
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean value"),
+    .withMessage("isActive must be a boolean value")
+    .toBoolean(),
 ];
 
 // Query validations
@@ -71,12 +75,16 @@ const queryValidations = [
   query("page")
     .optional()
     .isInt({ min: 1 })
-    .withMessage("Page must be a positive integer"),
+    .withMessage("Page must be a positive integer")
+    .toInt()
+    .default(1),
   
   query("limit")
     .optional()
     .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .withMessage("Limit must be between 1 and 100")
+    .toInt()
+    .default(10),
 ];
 
 module.exports = {
@@ -87,20 +95,27 @@ module.exports = {
   list: queryValidations,
   
   // Get by ID
-  getById: [idParam],
+  getById: [validateIdParam],
   
   // Update Room Type
   update: [
-    idParam,
+    validateIdParam,
     ...roomTypeValidations.map(v => v.optional())
   ],
   
   // Delete Room Type
-  delete: [idParam],
+  delete: [validateIdParam],
   
   // Restore Room Type
-  restore: [idParam],
+  restore: [validateIdParam],
   
   // Toggle Active Status
-  toggleStatus: [idParam],
+  toggleStatus: [
+    validateIdParam,
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean")
+      .toBoolean(),
+  ],
 };

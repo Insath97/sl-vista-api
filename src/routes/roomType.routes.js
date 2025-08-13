@@ -1,27 +1,35 @@
 const express = require("express");
 const router = express.Router();
-const controller = require("../controllers/Merchant/roomType.controller");
+const controller = require("../controllers/roomType.controller");
 const validate = require("../utils/validations/roomType.validation");
 const middleware = require("../middlewares/auth.middleware");
 
+// Authenticated routes
 router.use(middleware.authenticate);
 
-/* create roomtype */
+// Create
 router.post("/", validate.create, controller.createRoomType);
 
-/* get all roomtype */
+// get all
 router.get("/", validate.list, controller.getAllRoomTypes);
 
-/* get by ID */
+// get by id
 router.get("/:id", validate.getById, controller.getRoomTypeById);
 
-/* update room type */
+// Update
 router.put("/:id", validate.update, controller.updateRoomType);
 
-/* DELETE */
+// Delete
 router.delete("/:id", validate.delete, controller.deleteRoomType);
 
-/* restore */
-router.patch("/:id/restore", validate.restore, controller.restoreRoomType);
+// Restore
+router.patch("/restore/:id", validate.restore, controller.restoreRoomType);
+
+// Status management
+router.patch(
+  "/status/:id",
+  validate.toggleStatus,
+  controller.toggleRoomTypeStatus
+);
 
 module.exports = router;
