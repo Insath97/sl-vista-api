@@ -100,8 +100,8 @@ const propertyValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        title: { [Op.iLike]: value },
-        [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+        title: { [Op.like]: value },
+        [Op.ne]: req.params?.id ? { id: req.params.id } : undefined,
       };
 
       if (req.user.accountType === "merchant") {
@@ -133,7 +133,7 @@ const propertyValidations = [
       const exists = await Property.findOne({
         where: {
           slug: value,
-          [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+          [Op.ne]: req.params?.id ? { id: req.params.id } : undefined,
         },
       });
       if (exists) throw new Error("This slug is already in use");
