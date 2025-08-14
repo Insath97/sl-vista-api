@@ -1,7 +1,15 @@
 const { DataTypes, Model } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-class RoomType extends Model {}
+class RoomType extends Model {
+  static associate(models) {
+    this.hasMany(models.Room, {
+      foreignKey: "roomTypeId",
+      as: "rooms",
+      onDelete: "CASCADE",
+    });
+  }
+}
 
 RoomType.init(
   {

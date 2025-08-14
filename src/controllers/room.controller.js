@@ -16,7 +16,7 @@ const handleImageUploads = async (files, roomId) => {
 
   const uploadPromises = files.images.map((file) =>
     UploadService.uploadFile(file, "rooms", roomId)
-  );
+  );v
 
   const uploadedFiles = await Promise.all(uploadPromises);
   return uploadedFiles.map((file) => ({
