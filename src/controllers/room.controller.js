@@ -16,7 +16,7 @@ const handleImageUploads = async (files, roomId) => {
 
   const uploadPromises = files.images.map((file) =>
     UploadService.uploadFile(file, "rooms", roomId)
-  );v
+  );
 
   const uploadedFiles = await Promise.all(uploadPromises);
   return uploadedFiles.map((file) => ({
@@ -29,6 +29,26 @@ const handleImageUploads = async (files, roomId) => {
   }));
 };
 
+// Helper to check business type access
+const checkBusinessTypeAccess = async (userId) => {
+  const user = await User.findByPk(userId, {
+    include: [
+      {
+        model: MerchantProfile,
+        as: "merchantProfile",
+        attributes: ["id", "businessType"],
+      },
+    ],
+  });
+
+  if (
+    user?.accountType === "merchant" &&
+    user?.merchantProfile?.businessType === "homestay"
+  ) {
+    throw new Error("Your business type does not allow room management");
+  }
+};
+
 /* Create room with images and amenities */
 exports.createRoom = async (req, res) => {
   const errors = validationResult(req);
@@ -37,67 +57,88 @@ exports.createRoom = async (req, res) => {
   }
 
   try {
-    /*  const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
+    await checkBusinessTypeAccess(req.user.id);
+
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        {
+          model: MerchantProfile,
+          as: "merchantProfile",
+          where: {
+            isActive: true,
+            status: "active",
+          },
+          required: false,
+        },
+      ],
     });
 
-    if (!user || !user.merchantProfile) {
+    if (!user) {
       return res.status(403).json({
         success: false,
-        message: "Merchant profile not found",
+        message: "User not found",
       });
     }
 
-    // Verify property ownership for merchants
-    if (user.accountType === "merchant") {
+    const { amenities, ...roomData } = req.body;
+
+    if (req.user.accountType === "merchant") {
       const property = await Property.findOne({
         where: {
-          id: req.body.propertyId,
-          merchantId: user.merchantProfile.id,
+          id: roomData.propertyId,
+          merchantId: req.user.merchantProfile.id,
         },
       });
-
       if (!property) {
         return res.status(403).json({
           success: false,
           message: "Property not found or not owned by merchant",
         });
       }
-    } */
+    }
 
-    const { amenities, ...roomData } = req.body;
+    // Set approval status
+    roomData.approvalStatus =
+      req.user.accountType === "admin" ? "approved" : "pending";
+    if (req.user.accountType === "admin") {
+      roomData.approvedAt = new Date();
+    }
 
     const room = await Room.create(roomData);
 
-    // Handle image uploads
     const images = await handleImageUploads(req.files, room.id);
     if (images.length > 0) {
       await RoomImage.bulkCreate(images);
     }
 
-    // Add amenities if provided
     if (amenities?.length) {
       await room.addAmenities(amenities);
     }
 
-    // Fetch with associations
     const roomWithAssociations = await Room.findByPk(room.id, {
       include: [
         {
-          model: Property,
-          as: "property",
-        },
-        {
           model: RoomType,
           as: "roomType",
+          attributes: ["id", "name"],
         },
         {
           model: Amenity,
           as: "amenities",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
+          /* required: false */
         },
         {
           model: RoomImage,
           as: "images",
+          order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
+        },
+        {
+          model: Property,
+          as: "property",
+          attributes: ["id", "title"],
         },
       ],
     });
@@ -126,13 +167,9 @@ exports.getAllRooms = async (req, res) => {
 
   try {
     const {
-      includeInactive,
+      isActive,
+      vistaVerified,
       includeDeleted,
-      includeImages,
-      includeAmenities,
-      includeProperty,
-      page = 1,
-      limit = 10,
       search,
       propertyId,
       roomTypeId,
@@ -140,74 +177,41 @@ exports.getAllRooms = async (req, res) => {
       maxPrice,
       approvalStatus,
       availabilityStatus,
+      page = 1,
+      limit = 10,
     } = req.query;
 
     const where = {};
-    const include = [];
-
-    // For merchants, only show rooms from their properties
-    if (req.user.accountType === "merchant") {
-      const user = await User.findByPk(req.user.id, {
-        include: [
-          {
-            model: MerchantProfile,
-            as: "merchantProfile",
-            attributes: ["id", "businessName"], // Only include needed merchant fields
-          },
-        ],
-      });
-
-      if (!user || !user.merchantProfile) {
-        return res.status(403).json({
-          success: false,
-          message: "Merchant profile not found",
-        });
-      }
-
-      include.push({
-        model: Property,
-        as: "property",
-        where: { merchantId: user.merchantProfile.id },
-        attributes: ["id", "title"], // Only include needed property fields
-      });
-    }
-
-    if (includeProperty === "true") {
-      include.push({
-        model: Property,
-        as: "property",
-        attributes: ["id", "title", "merchantId"], // Only essential property fields
-        include: [
-          {
-            model: MerchantProfile,
-            as: "merchant",
-            attributes: ["id", "businessName"], // Only merchant ID and business name
-          },
-        ],
-      });
-    }
-
-    if (includeAmenities === "true") {
-      include.push({
+    const include = [
+      {
+        model: RoomType,
+        as: "roomType",
+        attributes: ["id", "name"],
+      },
+      {
         model: Amenity,
         as: "amenities",
-        attributes: ["id", "name"], // Only amenity ID and name
-        through: { attributes: [] }, // Exclude join table attributes
-      });
-    }
-
-    if (includeImages === "true") {
-      include.push({
+        through: { attributes: [] },
+        attributes: ["id", "name"],
+        /* required: false */
+      },
+      {
         model: RoomImage,
         as: "images",
-        attributes: ["id", "roomId", "imageUrl"], // Only essential image fields
-      });
-    }
+        order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
+      },
+      {
+        model: Property,
+        as: "property",
+        attributes: ["id", "title"],
+      },
+    ];
 
-    // Filter conditions
-    if (includeInactive !== "true") where.isActive = true;
     if (propertyId) where.propertyId = propertyId;
     if (roomTypeId) where.roomTypeId = roomTypeId;
+    if (approvalStatus) where.approvalStatus = approvalStatus;
+    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
     if (minPrice) where.basePrice = { [Op.gte]: parseFloat(minPrice) };
     if (maxPrice) {
       where.basePrice = {
@@ -215,8 +219,6 @@ exports.getAllRooms = async (req, res) => {
         [Op.lte]: parseFloat(maxPrice),
       };
     }
-    if (approvalStatus) where.approvalStatus = approvalStatus;
-    if (availabilityStatus) where.availabilityStatus = availabilityStatus;
 
     if (search) {
       where[Op.or] = [
@@ -224,6 +226,40 @@ exports.getAllRooms = async (req, res) => {
         { floor: { [Op.like]: `%${search}%` } },
         { bedConfiguration: { [Op.like]: `%${search}%` } },
       ];
+    }
+
+    if (isActive === "true") where.isActive = true;
+    else if (isActive === "false") where.isActive = false;
+
+    if (vistaVerified !== undefined) {
+      where.vistaVerified = vistaVerified === "true";
+    }
+
+    if (req.user) {
+      await checkBusinessTypeAccess(req.user.id);
+      if (req.user.accountType === "merchant") {
+        const merchant = await MerchantProfile.findOne({
+          where: { userId: req.user.id },
+        });
+
+        if (!merchant) {
+          return res.status(403).json({
+            success: false,
+            message: "Merchant profile not found",
+          });
+        }
+
+        include.push({
+          model: Property,
+          as: "property",
+          where: { merchantId: merchant.id },
+          attributes: [],
+          required: true,
+        });
+      }
+    } else {
+      where.isActive = true;
+      where.approvalStatus = "approved";
     }
 
     const options = {
@@ -267,43 +303,81 @@ exports.getRoomById = async (req, res) => {
 
   try {
     const { includeDeleted } = req.query;
-    const options = {
-      where: { id: req.params.id },
-      include: [
-        {
+    const roomId = req.params.id; // Get the ID from params
+
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        message: "Room ID is required",
+      });
+    }
+
+    const where = { id: roomId }; // Use the specific ID
+    const include = [
+      {
+        model: RoomType,
+        as: "roomType",
+        attributes: ["id", "name"],
+      },
+      {
+        model: Amenity,
+        as: "amenities",
+        through: { attributes: [] },
+        attributes: ["id", "name"],
+        required: false,
+      },
+      {
+        model: RoomImage,
+        as: "images",
+        order: [["sortOrder", "ASC"]],
+        attributes: ["id", "imageUrl", "fileName"],
+        required: false,
+      },
+      {
+        model: Property,
+        as: "property",
+        attributes: ["id", "title"],
+        required: false,
+      },
+    ];
+
+    // For authenticated users
+    if (req.user) {
+      await checkBusinessTypeAccess(req.user.id);
+
+      if (req.user.accountType === "merchant") {
+        const merchant = await MerchantProfile.findOne({
+          where: { userId: req.user.id },
+        });
+
+        if (!merchant) {
+          return res.status(403).json({
+            success: false,
+            message: "Merchant profile not found",
+          });
+        }
+
+        // Add merchant-specific property filter
+        include.push({
           model: Property,
           as: "property",
-          include: [
-            {
-              model: MerchantProfile,
-              as: "merchant",
-              attributes: ["id", "businessName"],
-            },
-          ],
-        },
-        {
-          model: RoomType,
-          as: "roomType",
-        },
-      ],
-      paranoid: includeDeleted !== "true",
-    };
-
-    // For merchants, verify ownership
-    if (req.user.accountType === "merchant") {
-      const user = await User.findByPk(req.user.id, {
-        include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      });
-
-      if (!user || !user.merchantProfile) {
-        return res.status(403).json({
-          success: false,
-          message: "Merchant profile not found",
+          where: { merchantId: merchant.id },
+          attributes: [],
+          required: true,
         });
       }
-
-      options.include[0].where = { merchantId: user.merchantProfile.id };
     }
+    // For public access
+    else {
+      where.isActive = true;
+      where.approvalStatus = "approved";
+    }
+
+    const options = {
+      where,
+      include,
+      paranoid: includeDeleted === "true" ? false : true,
+    };
 
     const room = await Room.findOne(options);
 
@@ -336,24 +410,32 @@ exports.updateRoom = async (req, res) => {
   }
 
   try {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
+    await checkBusinessTypeAccess(req.user.id);
 
-    if (!user || !user.merchantProfile) {
-      return res.status(403).json({
-        success: false,
-        message: "Merchant profile not found",
-      });
-    }
-
-    const room = await Room.findOne({
-      where: { id: req.params.id },
+    // Fetch room with all necessary associations
+    const room = await Room.findByPk(req.params.id, {
       include: [
+        {
+          model: RoomType,
+          as: "roomType",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
+        },
+        {
+          model: RoomImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName", "s3Key"], // Added s3Key here
+        },
         {
           model: Property,
           as: "property",
-          where: { merchantId: user.merchantProfile.id },
+          attributes: ["id", "merchantId"], // Added merchantId here
         },
       ],
     });
@@ -361,61 +443,112 @@ exports.updateRoom = async (req, res) => {
     if (!room) {
       return res.status(404).json({
         success: false,
-        message: "Room not found or not owned by merchant",
+        message: "Room not found",
       });
     }
 
     const { amenities, images: bodyImages, ...updateData } = req.body;
     let newImages = [];
 
-    // Handle file uploads
-    const uploadedImages = await handleImageUploads(req.files, room.id);
-    newImages = [...uploadedImages];
+    // Merchant permission check
+    if (req.user.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+      });
 
-    // Handle body images
-    if (bodyImages?.length) {
-      newImages = [
-        ...newImages,
-        ...bodyImages.map((img) => ({
-          ...img,
-          s3Key: img.s3Key || null,
-        })),
-      ];
+      if (!merchant || room.property.merchantId !== merchant.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this room",
+        });
+      }
     }
+
+    // Admin permission check for approval status
+    if (req.user.accountType !== "admin" && "approvalStatus" in updateData) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can change approval status",
+      });
+    }
+
+    // Set approval status
+    updateData.approvalStatus =
+      req.user.accountType === "admin" ? "approved" : "pending";
+    if (req.user.accountType === "admin") {
+      updateData.approvedAt = new Date();
+    }
+
+    // Update basic room data
+    await room.update(updateData);
 
     // Update amenities if provided
     if (amenities) {
       await room.updateAmenities(amenities);
     }
 
-    // Update images if provided
+    // Handle image uploads
+    const uploadedImages = await handleImageUploads(req.files, room.id);
+    newImages = [...uploadedImages];
+
+    if (bodyImages?.length) {
+      newImages = [
+        ...newImages,
+        ...bodyImages.map((img) => ({
+          ...img,
+          s3Key: img.s3Key || null,
+          roomId: room.id,
+        })),
+      ];
+    }
+
+    // CORRECTED: Use room.images instead of property.images
+    const existingImageKeys = room.images
+      .map((img) => img.s3Key)
+      .filter((key) => key);
+
+    // Delete old images from S3
+    if (existingImageKeys.length > 0) {
+      try {
+        await UploadService.deleteMultipleFiles(existingImageKeys);
+      } catch (error) {
+        console.error("Error deleting old images from S3:", error);
+      }
+    }
+
+    // Update images in database
     if (newImages.length > 0) {
       await RoomImage.destroy({
         where: { roomId: room.id },
+        force: true,
       });
       await RoomImage.bulkCreate(newImages);
     }
 
-    await room.update(updateData);
-
-    // Fetch updated room
+    // Fetch updated room with all associations
     const updatedRoom = await Room.findByPk(room.id, {
       include: [
         {
-          model: Property,
-          as: "property",
-        },
-        {
           model: RoomType,
           as: "roomType",
+          attributes: ["id", "name"],
         },
         {
           model: Amenity,
           as: "amenities",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
         },
         {
           model: RoomImage,
           as: "images",
+          order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName"],
+        },
+        {
+          model: Property,
+          as: "property",
+          attributes: ["id", "title"],
         },
       ],
     });
@@ -437,22 +570,10 @@ exports.updateRoom = async (req, res) => {
 
 /* Delete room */
 exports.deleteRoom = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
   try {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
+    const { id } = req.params;
 
-    if (!user || !user.merchantProfile) {
-      return res.status(403).json({
-        success: false,
-        message: "Merchant profile not found",
-      });
-    }
+    await checkBusinessTypeAccess(req.user.id);
 
     const room = await Room.findOne({
       where: { id: req.params.id },
@@ -460,11 +581,7 @@ exports.deleteRoom = async (req, res) => {
         {
           model: Property,
           as: "property",
-          where: { merchantId: user.merchantProfile.id },
-        },
-        {
-          model: RoomImage,
-          as: "images",
+          attributes: ["id", "merchantId"],
         },
       ],
     });
@@ -472,16 +589,22 @@ exports.deleteRoom = async (req, res) => {
     if (!room) {
       return res.status(404).json({
         success: false,
-        message: "Room not found or not owned by merchant",
+        message: "Room not found",
       });
     }
 
-    // Get all S3 keys from images
-    const s3Keys = room.images.map((img) => img.s3Key).filter(Boolean);
+    // Check permissions
+    if (req.user.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+      });
 
-    // Delete all associated images from S3
-    if (s3Keys.length > 0) {
-      await UploadService.deleteMultipleFiles(s3Keys);
+      if (!merchant || room.property.merchantId !== merchant.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this room",
+        });
+      }
     }
 
     await room.destroy();
@@ -502,30 +625,35 @@ exports.deleteRoom = async (req, res) => {
 
 /* Restore room */
 exports.restoreRoom = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
   try {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
+    const { id } = req.params;
 
-    if (!user || !user.merchantProfile) {
-      return res.status(403).json({
-        success: false,
-        message: "Merchant profile not found",
-      });
-    }
+    await checkBusinessTypeAccess(req.user.id);
 
     const room = await Room.findOne({
-      where: { id: req.params.id },
+      where: { id },
       include: [
+        {
+          model: RoomType,
+          as: "roomType",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Amenity,
+          as: "amenities",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
+        },
+        {
+          model: RoomImage,
+          as: "images",
+          order: [["sortOrder", "ASC"]],
+          attributes: ["id", "imageUrl", "fileName", "s3Key"], // Added s3Key here
+        },
         {
           model: Property,
           as: "property",
-          where: { merchantId: user.merchantProfile.id },
+          attributes: ["id", "merchantId"], // Added merchantId here
         },
       ],
       paranoid: false,
@@ -534,11 +662,24 @@ exports.restoreRoom = async (req, res) => {
     if (!room) {
       return res.status(404).json({
         success: false,
-        message: "Room not found (including soft-deleted)",
+        message: "Room not found",
       });
     }
 
-    if (!room.deletedAt) {
+    if (req.user.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+      });
+
+      if (!merchant || room.property.merchantId !== merchant.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to restore this room",
+        });
+      }
+    }
+
+    if (room.deletedAt === null) {
       return res.status(400).json({
         success: false,
         message: "Room is not deleted",
@@ -547,31 +688,10 @@ exports.restoreRoom = async (req, res) => {
 
     await room.restore();
 
-    const restoredRoom = await Room.findByPk(room.id, {
-      include: [
-        {
-          model: Property,
-          as: "property",
-        },
-        {
-          model: RoomType,
-          as: "roomType",
-        },
-        {
-          model: Amenity,
-          as: "amenities",
-        },
-        {
-          model: RoomImage,
-          as: "images",
-        },
-      ],
-    });
-
     return res.status(200).json({
       success: true,
       message: "Room restored successfully",
-      data: restoredRoom,
+      data: room,
     });
   } catch (error) {
     console.error("Error restoring room:", error);
@@ -583,25 +703,125 @@ exports.restoreRoom = async (req, res) => {
   }
 };
 
-/* Admin update approval status */
-exports.updateApprovalStatus = async (req, res) => {
+/* Vista Verification */
+exports.vistaVerification = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
-    const room = await Room.findByPk(req.params.id, {
+    if (req.user.accountType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can update verification status",
+      });
+    }
+
+    const room = await Room.findByPk(req.params.id);
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    const newVerifiedStatus =
+      req.body.verified !== undefined ? req.body.verified : !room.vistaVerified;
+
+    await room.update({ vistaVerified: newVerifiedStatus });
+
+    return res.status(200).json({
+      success: true,
+      message: "Verification status updated successfully",
+      data: {
+        id: room.id,
+        vistaVerified: newVerifiedStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating verification status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update verification status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update Active Status */
+exports.updateRoomStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    if (req.user.accountType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can update room status",
+      });
+    }
+
+    const room = await Room.findByPk(req.params.id);
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    // Determine new status (toggle if not specified)
+    const newActiveStatus =
+      req.body.isActive !== undefined ? req.body.isActive : !room.isActive;
+
+    await room.update({
+      isActive: newActiveStatus,
+      availabilityStatus: newActiveStatus ? "available" : "unavailable",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Room status updated successfully",
+      data: {
+        id: room.id,
+        isActive: newActiveStatus,
+        availabilityStatus: newActiveStatus ? "available" : "unavailable",
+      },
+    });
+  } catch (error) {
+    console.error("Error updating room status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update room status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update Room Availability Status */
+exports.updateAvailabilityStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { id } = req.params;
+    const { availabilityStatus } = req.body;
+
+    await checkBusinessTypeAccess(req.user.id);
+
+    // Find room with property info
+    const room = await Room.findByPk(id, {
       include: [
         {
           model: Property,
           as: "property",
-          include: [
-            {
-              model: MerchantProfile,
-              as: "merchant",
-            },
-          ],
+          attributes: ["id", "merchantId"],
         },
       ],
     });
@@ -613,33 +833,131 @@ exports.updateApprovalStatus = async (req, res) => {
       });
     }
 
-    const { approvalStatus, rejectionReason } = req.body;
+    // Check permissions
+    if (req.user.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+      });
 
-    const updateData = {
-      approvalStatus,
-      ...(approvalStatus === "approved" && {
-        approvedAt: new Date(),
-        vistaVerified: true,
-      }),
-      ...(approvalStatus === "rejected" && { rejectionReason }),
-    };
+      if (!merchant || room.property.merchantId !== merchant.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update availability for your own rooms",
+        });
+      }
+    }
 
-    await room.update(updateData);
+    // Validate status (should already be handled by validation middleware)
+    const validStatuses = [
+      "available",
+      "unavailable",
+      "maintenance",
+      "archived",
+    ];
+    if (!validStatuses.includes(availabilityStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid availability status",
+      });
+    }
 
-    // Fetch updated room with associations
-    const updatedRoom = await Room.findByPk(room.id, {
-      include: [
-        { model: Property, as: "property" },
-        { model: RoomType, as: "roomType" },
-        { model: Amenity, as: "amenities" },
-        { model: RoomImage, as: "images" },
-      ],
-    });
+    // Update the status
+    await room.update({ availabilityStatus });
 
     return res.status(200).json({
       success: true,
-      message: "Room approval status updated",
-      data: updatedRoom,
+      message: "Availability status updated successfully",
+      data: {
+        id: room.id,
+        availabilityStatus: room.availabilityStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating availability status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update availability status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/* Update Room Approval Status (Admin Only) */
+exports.updateApprovalStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    // Verify admin access
+    if (req.user.accountType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can update approval status",
+      });
+    }
+
+    const { id } = req.params;
+    const { approvalStatus, rejectionReason } = req.body;
+
+    const room = await Room.findByPk(id, {
+      paranoid: false,
+      include: [
+        {
+          model: Property,
+          as: "property",
+          attributes: ["id", "title"],
+        },
+      ],
+    });
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    // Validate status transition
+    if (approvalStatus === "rejected" && !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required when rejecting a room",
+      });
+    }
+
+    // Prepare update data
+    const updateData = {
+      approvalStatus,
+      lastStatusChange: new Date(),
+    };
+
+    // Handle special cases
+    if (approvalStatus === "approved") {
+      updateData.approvedAt = new Date();
+      updateData.vistaVerified = true;
+      updateData.rejectionReason = null;
+    } else if (approvalStatus === "rejected") {
+      updateData.rejectionReason = rejectionReason;
+    } else if (approvalStatus === "changes_requested") {
+      updateData.rejectionReason =
+        rejectionReason || "Changes requested by admin";
+    }
+
+    // Update room
+    await room.update(updateData);
+
+    return res.status(200).json({
+      success: true,
+      message: "Room approval status updated successfully",
+      data: {
+        id: room.id,
+        approvalStatus: room.approvalStatus,
+        rejectionReason: room.rejectionReason,
+        approvedAt: room.approvedAt,
+        property: room.property,
+      },
     });
   } catch (error) {
     console.error("Error updating approval status:", error);
@@ -651,101 +969,8 @@ exports.updateApprovalStatus = async (req, res) => {
   }
 };
 
-/* Toggle room active status */
-exports.toggleActiveStatus = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
 
-  try {
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-    });
-
-    if (!user || !user.merchantProfile) {
-      return res.status(403).json({
-        success: false,
-        message: "Merchant profile not found",
-      });
-    }
-
-    const room = await Room.findOne({
-      where: { id: req.params.id },
-      include: [
-        {
-          model: Property,
-          as: "property",
-          where: { merchantId: user.merchantProfile.id },
-        },
-      ],
-    });
-
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: "Room not found or not owned by merchant",
-      });
-    }
-
-    await room.update({ isActive: !room.isActive });
-
-    return res.status(200).json({
-      success: true,
-      message: "Room status toggled successfully",
-      data: {
-        id: room.id,
-        isActive: !room.isActive,
-      },
-    });
-  } catch (error) {
-    console.error("Error toggling room status:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to toggle room status",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-};
-
-/* Vista verify room (admin only) */
-exports.vistaVerifyRoom = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    const room = await Room.findByPk(req.params.id);
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: "Room not found",
-      });
-    }
-
-    // Only update the vistaVerified field
-    await room.update({
-      vistaVerified: req.body.vistaVerified,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Room Vista verification updated",
-      data: {
-        id: room.id,
-        vistaVerified: room.vistaVerified,
-      },
-    });
-  } catch (error) {
-    console.error("Error updating Vista verification:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update Vista verification",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-};
+/* #################################################################################################################################### */
 
 /* Update room amenities */
 exports.updateAmenities = async (req, res) => {
@@ -807,79 +1032,6 @@ exports.updateAmenities = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update room amenities",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-};
-
-/* Admin approval for merchant-created rooms */
-exports.approveRoom = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    const { approvalStatus, rejectionReason } = req.body;
-    const room = await Room.findByPk(req.params.id, {
-      include: [
-        {
-          model: Property,
-          as: "property",
-          include: [
-            {
-              model: MerchantProfile,
-              as: "merchant",
-            },
-          ],
-        },
-      ],
-    });
-
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: "Room not found",
-      });
-    }
-
-    // Validate status transition
-    if (approvalStatus === "rejected" && !rejectionReason) {
-      return res.status(400).json({
-        success: false,
-        message: "Rejection reason is required when rejecting a room",
-      });
-    }
-
-    const updateData = {
-      approvalStatus,
-      lastStatusChange: new Date(),
-    };
-
-    if (approvalStatus === "approved") {
-      updateData.approvedAt = new Date();
-      updateData.rejectionReason = null;
-    } else if (approvalStatus === "rejected") {
-      updateData.rejectionReason = rejectionReason;
-    }
-
-    await room.update(updateData);
-
-    return res.status(200).json({
-      success: true,
-      message: `Room ${approvalStatus} successfully`,
-      data: {
-        id: room.id,
-        approvalStatus: room.approvalStatus,
-        approvedAt: room.approvedAt,
-        rejectionReason: room.rejectionReason,
-      },
-    });
-  } catch (error) {
-    console.error("Error updating room approval:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update room approval",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }

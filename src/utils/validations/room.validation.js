@@ -7,79 +7,106 @@ const Amenity = require("../../models/amenity.model");
 const User = require("../../models/user.model");
 const MerchantProfile = require("../../models/merchantProfile.model");
 
-// Common validation rules
-const idParam = param("id")
-  .isInt()
-  .withMessage("Invalid ID format")
-  .custom(async (value, { req }) => {
-    // Admin can access any room
-    if (req.user.accountType === "admin") return true;
+// Common validation helpers
+const validateIdParam = (paramName, model, options = {}) => {
+  return param(paramName)
+    .isInt({ min: 1 })
+    .withMessage(`Invalid ${paramName} format`)
+    .toInt()
+    .custom(async (value, { req }) => {
+      const record = await model.findByPk(value, options);
+      if (!record) {
+        throw new Error(`${model.name} not found`);
+      }
+      return true;
+    });
+};
 
-    const user = await User.findByPk(req.user.id, {
-      include: [{ model: MerchantProfile, as: "merchantProfile" }],
-      paranoid: false,
+const validateMerchantOwnership = async (roomId, userId) => {
+  const merchant = await MerchantProfile.findOne({
+    where: { userId },
+    attributes: ["id", "businessType"],
+  });
+
+  if (!merchant) {
+    throw new Error("Merchant profile not found");
+  }
+
+  if (["homestay"].includes(merchant.businessType)) {
+    throw new Error("Your business type does not allow room management");
+  }
+
+  const room = await Room.findOne({
+    where: {
+      id: roomId,
+    },
+    include: [
+      {
+        model: Property,
+        as: "property",
+        where: { merchantId: merchant.id },
+      },
+    ],
+  });
+
+  if (!room) {
+    throw new Error("Room not found or not owned by your merchant account");
+  }
+
+  return true;
+};
+
+// Room ID validation with ownership and business type check
+const roomIdParam = param("id")
+  .isInt({ min: 1 })
+  .withMessage("Invalid room ID format")
+  .toInt()
+  .custom(async (value, { req }) => {
+    if (req.user.accountType === "admin") {
+      const room = await Room.findByPk(value, { paranoid: false });
+      if (!room) throw new Error("Room not found");
+      return true;
+    }
+
+    return validateMerchantOwnership(value, req.user.id);
+  });
+
+// Business type access validation
+const businessTypeAccessValidation = body().custom(async (value, { req }) => {
+  if (req.user?.accountType === "merchant") {
+    const merchant = await MerchantProfile.findOne({
+      where: { userId: req.user.id },
+      attributes: ["businessType"],
     });
 
-    if (!user || !user.merchantProfile) {
+    if (!merchant) {
       throw new Error("Merchant profile not found");
     }
 
-    const room = await Room.findOne({
-      where: { id: value },
-      include: [
-        {
-          model: Property,
-          as: "property",
-          where: { merchantId: user.merchantProfile.id },
-        },
-      ],
-      paranoid: false,
-    });
-
-    if (!room) {
-      throw new Error("Room not found or not owned by merchant");
+    if (["homestay"].includes(merchant.businessType)) {
+      throw new Error("Your business type does not allow room access");
     }
-  });
-
-const validateRoomNumber = body("roomNumber")
-  .trim()
-  .isLength({ min: 1, max: 20 })
-  .withMessage("Room number must be 1-20 characters")
-  .custom(async (value, { req }) => {
-    const where = {
-      roomNumber: value,
-      propertyId: req.body.propertyId || req.params.propertyId,
-    };
-
-    if (req.params?.id) {
-      where.id = { [Op.ne]: req.params.id };
-    }
-
-    const exists = await Room.findOne({ where });
-    if (exists) {
-      throw new Error("Room number already exists in this property");
-    }
-    return true;
-  });
+  }
+  return true;
+});
 
 // Room basic validations
 const roomValidations = [
+  businessTypeAccessValidation,
+
   body("propertyId")
     .isInt()
     .withMessage("Invalid property ID")
     .custom(async (value, { req }) => {
-      // Admin can assign to any property
-      if (req.user.accountType === "admin") return true;
+      const property = await Property.findByPk(value);
+      if (!property) throw new Error("Property not found");
 
       if (req.user.accountType === "merchant") {
-        const property = await Property.findOne({
-          where: {
-            id: value,
-            merchantId: req.user.merchantProfile.id,
-          },
+        const merchant = await MerchantProfile.findOne({
+          where: { userId: req.user.id },
         });
-        if (!property) {
-          throw new Error("Property not found or not owned by merchant");
+        if (!merchant || property.merchantId !== merchant.id) {
+          throw new Error("Property not owned by merchant");
         }
       }
       return true;
@@ -91,6 +118,28 @@ const roomValidations = [
     .custom(async (value) => {
       const roomType = await RoomType.findByPk(value);
       if (!roomType) throw new Error("Room type not found");
+      return true;
+    }),
+
+  body("roomNumber")
+    .trim()
+    .notEmpty()
+    .withMessage("Room number is required")
+    .isLength({ max: 20 })
+    .withMessage("Room number must be less than 20 characters")
+    .custom(async (value, { req }) => {
+      const where = {
+        roomNumber: value,
+        propertyId: req.body.propertyId,
+      };
+
+      if (req.params?.id) {
+        where.id = { [Op.ne]: req.params.id };
+      }
+
+      const exists = await Room.findOne({ where });
+      if (exists)
+        throw new Error("Room number already exists in this property");
       return true;
     }),
 
@@ -144,19 +193,20 @@ const roomValidations = [
   body("isActive")
     .optional()
     .isBoolean()
-    .withMessage("isActive must be a boolean value"),
+    .withMessage("isActive must be a boolean value")
+    .toBoolean(),
 
   body("vistaVerified")
     .optional()
     .isBoolean()
-    .withMessage("vistaVerified must be a boolean value"),
+    .withMessage("vistaVerified must be a boolean value")
+    .toBoolean(),
 
   body("approvalStatus")
     .optional()
-    .custom(async (value, { req }) => {
-      // Only admin can set approval status directly
+    .custom((value, { req }) => {
       if (value && req.user.accountType !== "admin") {
-        throw new Error("Only admin can set approval status");
+        throw new Error("Only admins can set approval status");
       }
       return true;
     })
@@ -174,32 +224,143 @@ const roomValidations = [
     .withMessage("Invalid cleaning status"),
 ];
 
-// Query validations
+// Status validations
+const statusValidations = [
+  body("approvalStatus")
+    .optional()
+    .isIn(["pending", "approved", "rejected", "changes_requested"])
+    .withMessage("Invalid approval status"),
+
+  body("availabilityStatus")
+    .optional()
+    .isIn(["available", "unavailable", "maintenance", "archived"])
+    .withMessage("Invalid availability status"),
+
+  body("rejectionReason")
+    .optional()
+    .isString()
+    .withMessage("Rejection reason must be a string")
+    .isLength({ max: 1000 })
+    .withMessage("Rejection reason must be less than 1000 characters")
+    .custom((value, { req }) => {
+      if (req.body.approvalStatus === "rejected" && !value) {
+        throw new Error("Rejection reason is required when status is rejected");
+      }
+      return true;
+    }),
+];
+
+// Amenity validations (unchanged)
+const amenityValidations = [
+  body("amenities")
+    .optional()
+    .custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string" && value.split(",").every((v) => !isNaN(v)))
+        return true;
+      throw new Error(
+        "Amenities must be an array or comma-separated string of numbers"
+      );
+    })
+    .customSanitizer((value) => {
+      if (typeof value === "string") {
+        return value.split(",").map((id) => parseInt(id.trim()));
+      }
+      return value;
+    }),
+
+  body("amenities.*")
+    .isInt()
+    .withMessage("Amenity ID must be an integer")
+    .custom(async (value) => {
+      const amenity = await Amenity.findByPk(value);
+      if (!amenity) throw new Error(`Amenity with ID ${value} not found`);
+      return true;
+    }),
+];
+
+// Image validations
+const imageValidations = [
+  body("images").optional().isArray().withMessage("Images must be an array"),
+
+  body("images.*.imageUrl")
+    .if(body("images.*.imageUrl").exists())
+    .isURL()
+    .withMessage("Image URL must be a valid URL")
+    .isLength({ max: 512 })
+    .withMessage("Image URL must be less than 512 characters"),
+
+  body("images.*.s3Key")
+    .optional()
+    .isString()
+    .withMessage("S3 key must be a string"),
+
+  body("images.*.fileName")
+    .optional()
+    .isString()
+    .withMessage("File name must be a string"),
+
+  body("images.*.size")
+    .optional()
+    .isInt()
+    .withMessage("File size must be an integer"),
+
+  body("images.*.mimetype")
+    .optional()
+    .isString()
+    .withMessage("MIME type must be a string"),
+
+  body("images.*.caption")
+    .optional()
+    .isString()
+    .withMessage("Caption must be a string")
+    .isLength({ max: 255 })
+    .withMessage("Caption must be less than 255 characters"),
+
+  body("images.*.isFeatured")
+    .optional()
+    .isBoolean()
+    .withMessage("isFeatured must be a boolean"),
+
+  body("images.*.sortOrder")
+    .optional()
+    .isInt()
+    .withMessage("sortOrder must be an integer"),
+];
+
+// Query validations with business type check
 const queryValidations = [
-  query("includeInactive")
-    .optional()
-    .isBoolean()
-    .withMessage("includeInactive must be a boolean"),
+  query().custom(async (value, { req }) => {
+    if (req.user?.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+        attributes: ["businessType"],
+      });
 
-  query("includeDeleted")
-    .optional()
-    .isBoolean()
-    .withMessage("includeDeleted must be a boolean"),
+      if (!merchant) {
+        throw new Error("Merchant profile not found");
+      }
 
-  query("includeImages")
-    .optional()
-    .isBoolean()
-    .withMessage("includeImages must be a boolean"),
+      if (["homestay"].includes(merchant.businessType)) {
+        throw new Error("Your business type does not allow room access");
+      }
+    }
+    return true;
+  }),
 
-  query("includeAmenities")
+  query("page")
     .optional()
-    .isBoolean()
-    .withMessage("includeAmenities must be a boolean"),
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer")
+    .toInt()
+    .default(1),
 
-  query("includeProperty")
+  query("limit")
     .optional()
-    .isBoolean()
-    .withMessage("includeProperty must be a boolean"),
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100")
+    .toInt()
+    .default(10),
 
   query("search")
     .optional()
@@ -221,6 +382,36 @@ const queryValidations = [
     .isFloat({ min: 0 })
     .withMessage("Maximum price must be a positive number"),
 
+  query("includeInactive")
+    .optional()
+    .isBoolean()
+    .withMessage("includeInactive must be a boolean")
+    .toBoolean(),
+
+  query("includeDeleted")
+    .optional()
+    .isBoolean()
+    .withMessage("includeDeleted must be a boolean")
+    .toBoolean(),
+
+  query("includeImages")
+    .optional()
+    .isBoolean()
+    .withMessage("includeImages must be a boolean")
+    .toBoolean(),
+
+  query("includeAmenities")
+    .optional()
+    .isBoolean()
+    .withMessage("includeAmenities must be a boolean")
+    .toBoolean(),
+
+  query("includeProperty")
+    .optional()
+    .isBoolean()
+    .withMessage("includeProperty must be a boolean")
+    .toBoolean(),
+
   query("approvalStatus")
     .optional()
     .isIn(["pending", "approved", "rejected", "changes_requested"])
@@ -231,220 +422,104 @@ const queryValidations = [
     .isIn(["available", "unavailable", "maintenance", "archived"])
     .withMessage("Invalid availability status"),
 
-  query("page")
+  query("cleaningStatus")
     .optional()
-    .isInt({ min: 1 })
-    .withMessage("Page must be a positive integer"),
+    .isIn(["Clean", "Dirty", "In Progress", "Maintenance"])
+    .withMessage("Invalid cleaning status"),
 
-  query("limit")
+  query("sortBy")
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .isIn([
+      "createdAt",
+      "updatedAt",
+      "roomNumber",
+      "basePrice",
+      "approvalStatus",
+      "vistaVerified",
+    ])
+    .withMessage("Invalid sort field"),
+
+  query("sortOrder")
+    .optional()
+    .isIn(["asc", "desc"])
+    .withMessage("Sort order must be 'asc' or 'desc'")
+    .default("desc"),
 ];
 
-// Amenity validations
-const amenityValidations = [
-  body("amenities")
-    .optional()
-    .customSanitizer((value) => {
-      if (typeof value === "string") {
-        return value.split(",").map((id) => parseInt(id.trim()));
-      }
-      return value;
-    })
-    .custom((value) => {
-      if (value && !Array.isArray(value)) {
-        throw new Error("Amenities must be an array or comma-separated string");
-      }
-      return true;
-    }),
-
-  body("amenities.*")
-    .optional()
-    .isInt()
-    .withMessage("Amenity ID must be an integer")
-    .custom(async (value) => {
-      const amenity = await Amenity.findByPk(value);
-      if (!amenity) throw new Error(`Amenity with ID ${value} not found`);
-      return true;
-    }),
-];
-
-// Image validations
-const imageValidations = [
-  body("images").optional().isArray().withMessage("Images must be an array"),
-
-  body("images.*.imageUrl")
-    .optional()
-    .isURL()
-    .withMessage("Image URL must be a valid URL")
-    .isLength({ max: 512 })
-    .withMessage("Image URL must be less than 512 characters"),
-
-  body("images.*.caption")
-    .optional()
-    .isString()
-    .withMessage("Caption must be a string")
-    .isLength({ max: 255 })
-    .withMessage("Caption must be less than 255 characters"),
-
-  body("images.*.isFeatured")
-    .optional()
-    .isBoolean()
-    .withMessage("isFeatured must be a boolean"),
-
-  body("images.*.sortOrder")
-    .optional()
-    .isInt()
-    .withMessage("sortOrder must be an integer"),
-];
-
-const updateAmenitiesValidation = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  body("amenities")
-    .isArray({ min: 1 })
-    .withMessage("Amenities array cannot be empty"),
-  ...amenityValidations,
-];
-
-const updateImagesValidation = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  body("images")
-    .isArray({ min: 1 })
-    .withMessage("Images array cannot be empty"),
-  ...imageValidations,
-  body("images.*.id")
-    .optional()
-    .isInt()
-    .withMessage("Image ID must be an integer"),
-];
-
-const deleteImageValidation = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  param("imageId").isInt().withMessage("Invalid image ID"),
-];
-
-const verifyRoomValidation = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  body("verified")
-    .optional()
-    .isBoolean()
-    .withMessage("verified must be a boolean")
-    .custom((value, { req }) => {
-      if (req.user.accountType !== "admin") {
-        throw new Error("Only admin can perform Vista verification");
-      }
-      return true;
-    }),
-  body("approvalStatus")
-    .optional()
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status"),
-  body("rejectionReason")
-    .optional()
-    .isString()
-    .withMessage("rejectionReason must be a string"),
-];
-
-const updateApprovalStatus = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  body("approvalStatus")
-    .isIn(["pending", "approved", "rejected", "changes_requested"])
-    .withMessage("Invalid approval status")
-    .custom((value, { req }) => {
-      if (req.user.accountType !== "admin") {
-        throw new Error("Only admin can update approval status");
-      }
-      return true;
-    }),
-  body("rejectionReason")
-    .if(body("approvalStatus").equals("rejected"))
-    .notEmpty()
-    .withMessage("Rejection reason is required when status is rejected")
-    .optional()
-    .isString()
-    .withMessage("Rejection reason must be a string")
-    .isLength({ max: 1000 })
-    .withMessage("Rejection reason must be less than 1000 characters"),
-];
-
-// Public room ID validation (no merchant ownership check)
-const publicIdParam = param("id")
-  .isInt()
-  .withMessage("Invalid room ID format")
-  .custom(async (value) => {
-    const room = await Room.findByPk(value, { paranoid: false });
-    if (!room) {
-      throw new Error("Room not found");
-    }
-    return true;
-  });
-
-// Vista verification validation (admin only)
-const vistaVerifyValidation = [
-  param("id").isInt().withMessage("Invalid room ID"),
-  body("vistaVerified")
-    .isBoolean()
-    .withMessage("vistaVerified must be a boolean")
-    .custom((value, { req }) => {
-      if (req.user.accountType !== "admin") {
-        throw new Error("Only admin can perform Vista verification");
-      }
-      return true;
-    }),
-];
-
+// Export all validations with business type checks
 module.exports = {
   // Create Room
   create: [
-    validateRoomNumber,
     ...roomValidations,
     ...amenityValidations,
     ...imageValidations,
+    ...statusValidations,
   ],
 
   // List Rooms
   list: queryValidations,
 
   // Get by ID
-  getById: [idParam],
+  getById: [roomIdParam],
 
   // Update Room
   update: [
-    idParam,
-    validateRoomNumber.optional(),
+    roomIdParam,
     ...roomValidations.map((v) => v.optional()),
     ...amenityValidations.map((v) => v.optional()),
     ...imageValidations.map((v) => v.optional()),
+    ...statusValidations.map((v) => v.optional()),
   ],
 
   // Delete Room
-  delete: [idParam],
+  delete: [roomIdParam],
 
   // Restore Room
-  restore: [idParam],
-
-  // Toggle Active Status
-  toggleStatus: [idParam],
+  restore: [roomIdParam],
 
   // Verify Room
-  verify: verifyRoomValidation,
+  verify: [
+    roomIdParam,
+    body("verified")
+      .optional()
+      .isBoolean()
+      .withMessage("verified must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Vista Verify (admin only)
-  vistaVerify: vistaVerifyValidation,
+  // Update Status
+  updateStatus: [
+    roomIdParam,
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean")
+      .toBoolean(),
+  ],
 
-  // Update Amenities
-  updateAmenities: updateAmenitiesValidation,
+  // Update Availability Status
+  updateAvailability: [
+    roomIdParam,
+    body("availabilityStatus")
+      .isIn(["available", "unavailable", "maintenance", "archived"])
+      .withMessage("Invalid availability status"),
+  ],
 
-  // Update Images
-  updateImages: updateImagesValidation,
+  // Update Approval Status
+  updateApproval: [
+    roomIdParam,
+    body("approvalStatus")
+      .isIn(["pending", "approved", "rejected", "changes_requested"])
+      .withMessage("Invalid approval status"),
+    body("rejectionReason")
+      .if(body("approvalStatus").equals("rejected"))
+      .notEmpty()
+      .withMessage("Rejection reason is required when status is rejected")
+      .optional()
+      .isString()
+      .withMessage("Rejection reason must be a string")
+      .isLength({ max: 1000 })
+      .withMessage("Rejection reason must be less than 1000 characters"),
+  ],
 
-  // Delete Image
-  deleteImage: deleteImageValidation,
-
-  // Admin update approval status
-  updateApprovalStatus: updateApprovalStatus,
-
-  // Public room ID validation
-  getApprovedRoomById: [publicIdParam],
 };

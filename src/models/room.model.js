@@ -9,6 +9,17 @@ class Room extends Model {
       onDelete: "CASCADE",
     });
 
+    this.belongsToMany(models.Amenity, {
+      through: models.RoomAmenity,
+      foreignKey: "roomId",
+      as: "amenities",
+    });
+
+    this.hasMany(models.RoomAmenity, {
+      foreignKey: "roomId",
+      as: "roomAmenities",
+    });
+
     this.belongsTo(models.RoomType, {
       foreignKey: "roomTypeId",
       as: "roomType",
@@ -20,17 +31,6 @@ class Room extends Model {
       as: "images",
       onDelete: "CASCADE",
     });
-
-    this.belongsToMany(models.Amenity, {
-      through: models.RoomAmenity,
-      foreignKey: "roomId",
-      as: "amenities",
-    });
-
-    this.hasMany(models.RoomAmenity, {
-      foreignKey: "roomId",
-      as: "roomAmenities",
-    });
   }
 
   // Helper methods for amenities
@@ -38,7 +38,6 @@ class Room extends Model {
     if (!Array.isArray(images)) {
       throw new Error("Images must be provided as an array");
     }
-
     return await this.sequelize.models.RoomImage.bulkCreate(
       images.map((image) => ({
         roomId: this.id,
@@ -87,25 +86,15 @@ class Room extends Model {
         amenityId,
         ...options,
       })),
-      { ignoreDuplicates: true }
+      { returning: true }
     );
   }
 
   async updateAmenities(amenityUpdates) {
-    const transaction = await this.sequelize.transaction();
-    try {
-      await this.sequelize.models.RoomAmenity.destroy({
-        where: { roomId: this.id },
-        transaction,
-      });
-
-      const result = await this.addAmenities(amenityUpdates, { transaction });
-      await transaction.commit();
-      return result;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
+    await this.sequelize.models.RoomAmenity.destroy({
+      where: { roomId: this.id },
+    });
+    return this.addAmenities(amenityUpdates);
   }
 }
 
@@ -337,7 +326,7 @@ Room.init(
     tableName: "rooms",
     paranoid: true,
     defaultScope: {
-      where: { isActive: true },
+      where: {},
     },
     scopes: {
       available: {
