@@ -31,6 +31,12 @@ class Room extends Model {
       as: "images",
       onDelete: "CASCADE",
     });
+
+    this.belongsToMany(models.Booking, {
+      through: models.BookingRoom,
+      foreignKey: "roomId",
+      as: "rooms",
+    });
   }
 
   // Helper methods for amenities

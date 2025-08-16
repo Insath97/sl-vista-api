@@ -100,10 +100,12 @@ const propertyValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        title: { [Op.like]: value },
-        [Op.ne]: req.params?.id ? { id: req.params.id } : undefined,
+        name: { [Op.like]: value }, // Changed from Op.iLike to Op.like
       };
 
+      if (req.params?.id) {
+        where.id = { [Op.ne]: req.params.id };
+      }
       if (req.user.accountType === "merchant") {
         const merchant = await MerchantProfile.findOne({
           where: { userId: req.user.id },
@@ -575,7 +577,7 @@ module.exports = {
       .isLength({ max: 1000 })
       .withMessage("Rejection reason must be less than 1000 characters"),
   ],
-/* 
+  /* 
   // Image operations
   addImages: [propertyIdParam],
   updateImages: [propertyIdParam, ...imageValidations],

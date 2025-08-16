@@ -96,9 +96,12 @@ const homestayValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        title: { [Op.iLike]: value },
-        [Op.not]: req.params?.id ? { id: req.params.id } : undefined,
+        title: { [Op.like]: value }, // Changed from Op.iLike to Op.like
       };
+
+      if (req.params?.id) {
+        where.id = { [Op.ne]: req.params.id };
+      }
 
       if (req.user.accountType === "merchant") {
         const merchant = await MerchantProfile.findOne({
@@ -409,8 +412,14 @@ const statusValidations = [
 const amenityValidations = [
   body("amenities")
     .optional()
-    .isArray()
-    .withMessage("Amenities must be an array")
+    .custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string" && value.split(",").every((v) => !isNaN(v)))
+        return true;
+      throw new Error(
+        "Amenities must be an array or comma-separated string of numbers"
+      );
+    })
     .customSanitizer((value) => {
       if (typeof value === "string") {
         return value.split(",").map((id) => parseInt(id.trim()));
@@ -419,7 +428,6 @@ const amenityValidations = [
     }),
 
   body("amenities.*")
-    .optional()
     .isInt()
     .withMessage("Amenity ID must be an integer")
     .custom(async (value) => {
@@ -428,7 +436,6 @@ const amenityValidations = [
       return true;
     }),
 ];
-
 // Image validations
 const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),

@@ -26,11 +26,10 @@ class HomeStay extends Model {
       onDelete: "CASCADE",
     });
 
-    /* associations with bookings */
-    this.hasMany(models.Booking, {
+    this.belongsToMany(models.Booking, {
+      through: models.BookingHomeStay,
       foreignKey: "homestayId",
-      as: "bookings",
-      onDelete: "CASCADE",
+      as: "home_stays",
     });
   }
 
