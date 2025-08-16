@@ -32,8 +32,10 @@ const validateMerchantOwnership = async (propertyId, userId) => {
   }
 
   // Check business type restrictions
-  if (["homestay"].includes(merchant.businessType)) {
-    throw new Error("Your business type does not allow property management");
+  if (merchant.businessType === "homestay") {
+    throw new Error(
+      "Your business type (homestay) does not allow property management"
+    );
   }
 
   const property = await Property.findOne({
@@ -77,8 +79,25 @@ const businessTypeAccessValidation = body().custom(async (value, { req }) => {
       throw new Error("Merchant profile not found");
     }
 
-    if (merchant.businessType === 'homestay') {
-      throw new Error("Your business type does not allow property access");
+    if (merchant.businessType === "homestay") {
+      throw new Error(
+        "Your business type (homestay) does not allow property access"
+      );
+    }
+  } else if (req.user?.accountType === "admin" && req.body.merchantId) {
+    // Additional check for admin-specified merchant
+    const merchant = await MerchantProfile.findByPk(req.body.merchantId, {
+      attributes: ["businessType"],
+    });
+
+    if (!merchant) {
+      throw new Error("Specified merchant profile not found");
+    }
+
+    if (merchant.businessType === "homestay") {
+      throw new Error(
+        "Selected merchant's business type (homestay) does not allow property management"
+      );
     }
   }
   return true;
@@ -100,7 +119,7 @@ const propertyValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        title: { [Op.like]: value }, // Changed from Op.iLike to Op.like
+        title: { [Op.like]: value },
       };
 
       if (req.params?.id) {
@@ -268,13 +287,23 @@ const propertyValidations = [
     .isInt()
     .withMessage("merchantId must be an integer")
     .custom(async (value) => {
-      const merchant = await MerchantProfile.findByPk(value);
+      const merchant = await MerchantProfile.findByPk(value, {
+        attributes: ["id", "businessType", "status", "isActive"],
+      });
       if (!merchant) throw new Error("Merchant not found");
+      if (merchant.businessType === "homestay") {
+        throw new Error(
+          "This merchant's business type (homestay) doesn't allow property management"
+        );
+      }
+      if (merchant.status !== "active" || !merchant.isActive) {
+        throw new Error("Merchant account is not active");
+      }
       return true;
     }),
 ];
 
-// Status validations (unchanged)
+// Status validations
 const statusValidations = [
   body("approvalStatus")
     .optional()
@@ -300,7 +329,7 @@ const statusValidations = [
     }),
 ];
 
-// Amenity validations (unchanged)
+// Amenity validations
 const amenityValidations = [
   body("amenities")
     .optional()
@@ -329,7 +358,7 @@ const amenityValidations = [
     }),
 ];
 
-// Image validations (unchanged)
+// Image validations
 const imageValidations = [
   body("images").optional().isArray().withMessage("Images must be an array"),
 
@@ -391,8 +420,10 @@ const queryValidations = [
         throw new Error("Merchant profile not found");
       }
 
-      if (["homestay"].includes(merchant.businessType)) {
-        throw new Error("Your business type does not allow property access");
+      if (merchant.businessType === "homestay") {
+        throw new Error(
+          "Your business type (homestay) does not allow property access"
+        );
       }
     }
     return true;
@@ -582,12 +613,6 @@ module.exports = {
       .isLength({ max: 1000 })
       .withMessage("Rejection reason must be less than 1000 characters"),
   ],
-  /* 
-  // Image operations
-  addImages: [propertyIdParam],
-  updateImages: [propertyIdParam, ...imageValidations],
-  deleteImage: imageOperationValidations,
-  setFeaturedImage: imageOperationValidations, */
 
   // Amenity operations
   updateAmenities: [

@@ -123,7 +123,6 @@ Property.init(
     merchantId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      unique: true,
       references: {
         model: "merchant_profiles",
         key: "id",
