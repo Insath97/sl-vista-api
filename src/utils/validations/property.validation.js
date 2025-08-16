@@ -77,7 +77,7 @@ const businessTypeAccessValidation = body().custom(async (value, { req }) => {
       throw new Error("Merchant profile not found");
     }
 
-    if (["homestay"].includes(merchant.businessType)) {
+    if (merchant.businessType === 'homestay') {
       throw new Error("Your business type does not allow property access");
     }
   }
@@ -100,7 +100,7 @@ const propertyValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        name: { [Op.like]: value }, // Changed from Op.iLike to Op.like
+        title: { [Op.like]: value }, // Changed from Op.iLike to Op.like
       };
 
       if (req.params?.id) {
@@ -304,8 +304,14 @@ const statusValidations = [
 const amenityValidations = [
   body("amenities")
     .optional()
-    .isArray()
-    .withMessage("Amenities must be an array")
+    .custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string" && value.split(",").every((v) => !isNaN(v)))
+        return true;
+      throw new Error(
+        "Amenities must be an array or comma-separated string of numbers"
+      );
+    })
     .customSanitizer((value) => {
       if (typeof value === "string") {
         return value.split(",").map((id) => parseInt(id.trim()));
@@ -314,7 +320,6 @@ const amenityValidations = [
     }),
 
   body("amenities.*")
-    .optional()
     .isInt()
     .withMessage("Amenity ID must be an integer")
     .custom(async (value) => {

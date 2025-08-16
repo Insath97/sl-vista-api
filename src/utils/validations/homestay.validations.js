@@ -68,6 +68,7 @@ const homestayIdParam = param("id")
 // Business type access validation
 const businessTypeAccessValidation = body().custom(async (value, { req }) => {
   if (req.user?.accountType === "merchant") {
+    // Existing merchant validation
     const merchant = await MerchantProfile.findOne({
       where: { userId: req.user.id },
       attributes: ["businessType"],
@@ -80,6 +81,21 @@ const businessTypeAccessValidation = body().custom(async (value, { req }) => {
     if (!["homestay", "both"].includes(merchant.businessType)) {
       throw new Error("Your business type does not allow homestay access");
     }
+  } else if (req.user?.accountType === "admin" && req.body.merchantId) {
+    // Additional check for admin-specified merchant
+    const merchant = await MerchantProfile.findByPk(req.body.merchantId, {
+      attributes: ["businessType"],
+    });
+
+    if (!merchant) {
+      throw new Error("Specified merchant profile not found");
+    }
+
+    if (!["homestay", "both"].includes(merchant.businessType)) {
+      throw new Error(
+        "Selected merchant's business type does not allow homestay management"
+      );
+    }
   }
   return true;
 });
@@ -87,6 +103,28 @@ const businessTypeAccessValidation = body().custom(async (value, { req }) => {
 // Homestay basic validations
 const homestayValidations = [
   businessTypeAccessValidation,
+
+  body("merchantId")
+    .if((value, { req }) => req.user.accountType === "admin")
+    .notEmpty()
+    .withMessage("merchantId is required for admin")
+    .isInt()
+    .withMessage("merchantId must be an integer")
+    .custom(async (value) => {
+      const merchant = await MerchantProfile.findByPk(value, {
+        attributes: ["id", "businessType", "status", "isActive"],
+      });
+      if (!merchant) throw new Error("Merchant not found");
+      if (!["homestay", "both"].includes(merchant.businessType)) {
+        throw new Error(
+          "This merchant's business type doesn't allow homestay management"
+        );
+      }
+      if (merchant.status !== "active" || !merchant.isActive) {
+        throw new Error("Merchant account is not active");
+      }
+      return true;
+    }),
 
   body("title")
     .trim()
@@ -96,13 +134,14 @@ const homestayValidations = [
     .withMessage("Title must be 2-100 characters")
     .custom(async (value, { req }) => {
       const where = {
-        title: { [Op.like]: value }, // Changed from Op.iLike to Op.like
+        title: { [Op.like]: value },
       };
 
       if (req.params?.id) {
         where.id = { [Op.ne]: req.params.id };
       }
 
+      // For merchants, check against their own properties
       if (req.user.accountType === "merchant") {
         const merchant = await MerchantProfile.findOne({
           where: { userId: req.user.id },
@@ -110,7 +149,9 @@ const homestayValidations = [
         });
         if (!merchant) throw new Error("Merchant profile not found");
         where.merchantId = merchant.id;
-      } else if (req.body.merchantId) {
+      }
+      // For admins, check against the specified merchant's properties
+      else if (req.body.merchantId) {
         where.merchantId = req.body.merchantId;
       }
 
