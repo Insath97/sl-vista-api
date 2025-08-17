@@ -230,6 +230,7 @@ exports.getAllProperties = async (req, res) => {
         as: "amenities",
         through: { attributes: [] },
         attributes: ["id", "name"],
+        required: false,
       },
     ];
 
@@ -330,6 +331,7 @@ exports.getPropertyById = async (req, res) => {
         as: "amenities",
         through: { attributes: [] },
         attributes: ["id", "name"],
+        required: false,
       },
       {
         model: PropertyImage,
@@ -545,6 +547,7 @@ exports.updateProperty = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
         {
           model: PropertyImage,
@@ -646,6 +649,7 @@ exports.restoreProperty = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
       ],
     });
