@@ -127,7 +127,7 @@ exports.createRoom = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
-          /* required: false */
+          required: false,
         },
         {
           model: RoomImage,
@@ -193,7 +193,7 @@ exports.getAllRooms = async (req, res) => {
         as: "amenities",
         through: { attributes: [] },
         attributes: ["id", "name"],
-        /* required: false */
+        required: false,
       },
       {
         model: RoomImage,
@@ -425,6 +425,7 @@ exports.updateRoom = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
         {
           model: RoomImage,
@@ -538,6 +539,7 @@ exports.updateRoom = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
         {
           model: RoomImage,
@@ -643,6 +645,7 @@ exports.restoreRoom = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
         {
           model: RoomImage,
@@ -968,7 +971,6 @@ exports.updateApprovalStatus = async (req, res) => {
     });
   }
 };
-
 
 /* #################################################################################################################################### */
 
