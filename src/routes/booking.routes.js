@@ -6,20 +6,7 @@ const validate = require("../utils/validations/booking.validations");
 
 router.use(middleware.authenticate);
 
-/* Create booking */
-router.post(
-  "/",
-  validate.createBookingValidation,
-  controller.createBooking
-);
-
-/* Get all bookings */
-router.get(
-  "/",
-  validate.listBookingsValidation,
-  controller.getAllBookings
-);
-
-router.get("/list", controller.getCustomerBookings);
+/* create booking */
+router.post("/", validate.create, controller.createBooking);
 
 module.exports = router;

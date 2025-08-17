@@ -34,8 +34,6 @@ const permissionRoutes = require("./src/routes/permission.routes");
 const roleRoutes = require("./src/routes/roles.routes");
 const userRoutes = require("./src/routes/user.routes");
 
-
-
 const app = express();
 
 // Middleware
@@ -90,6 +88,7 @@ app.use("/api/v1/properties", propertyRoutes);
 app.use("/api/v1/room-type", roomtypeRoutes);
 app.use("/api/v1/rooms", roomRoutes);
 app.use("/api/v1/homestays", homestaysRoutes);
+app.use("/api/v1/booking", bookingRoutes);
 
 // 1st api
 app.get("/", (req, res) => {
@@ -101,8 +100,6 @@ app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/admin/roles", roleRoutes);
 app.use("/api/v1/admin/users", userRoutes);
 
-/* customer routes */
-app.use("/api/v1/booking", bookingRoutes);
 
 // Sync database and start server
 sequelize

@@ -6,6 +6,9 @@ const Property = require("../models/property.model");
 const PropertyImage = require("../models/propertyImage.model");
 const Amenity = require("../models/amenity.model");
 const User = require("../models/user.model");
+const Room = require("../models/room.model");
+const RoomImage = require("../models/roomImage.model");
+const RoomType = require("../models/roomType.model");
 const MerchantProfile = require("../models/merchantProfile.model");
 
 // Helper function to handle image uploads
@@ -164,6 +167,7 @@ exports.createProperty = async (req, res) => {
           as: "amenities",
           through: { attributes: [] },
           attributes: ["id", "name"],
+          required: false,
         },
         {
           model: PropertyImage,
@@ -332,6 +336,30 @@ exports.getPropertyById = async (req, res) => {
         as: "images",
         order: [["sortOrder", "ASC"]],
         attributes: ["id", "imageUrl", "fileName"],
+      },
+      {
+        model: Room,
+        as: "rooms",
+        required: false,
+        include: [
+          {
+            model: Amenity,
+            as: "amenities",
+            through: { attributes: [] },
+            attributes: ["id", "name"],
+          },
+          {
+            model: RoomImage,
+            as: "images",
+            order: [["sortOrder", "ASC"]],
+            attributes: ["id", "imageUrl", "fileName"],
+          },
+          {
+            model: RoomType,
+            as: "roomType",
+            attributes: ["id", "name"],
+          },
+        ],
       },
     ];
 
