@@ -86,7 +86,7 @@ exports.createRoom = async (req, res) => {
       const property = await Property.findOne({
         where: {
           id: roomData.propertyId,
-          merchantId: req.user.merchantProfile.id,
+          merchantId: user.merchantProfile.id,
         },
       });
       if (!property) {
