@@ -1,4 +1,4 @@
-const { DataTypes, Model } = require("sequelize");
+const { DataTypes, Model, Op } = require("sequelize");
 const { sequelize } = require("../config/database");
 
 class Booking extends Model {
@@ -9,21 +9,23 @@ class Booking extends Model {
       as: "customer",
     });
 
-    // Many-to-many with Rooms through BookingRoom
+    // Rooms association
     this.belongsToMany(models.Room, {
       through: models.BookingRoom,
       foreignKey: "bookingId",
+      otherKey: "roomId",
       as: "rooms",
     });
 
-    // Many-to-many with HomeStays through BookingHomeStay
+    // Homestays association
     this.belongsToMany(models.HomeStay, {
       through: models.BookingHomeStay,
       foreignKey: "bookingId",
+      otherKey: "homestayId",
       as: "homestays",
     });
 
-    // Direct associations with the junction tables
+    // Direct associations with junction tables
     this.hasMany(models.BookingRoom, {
       foreignKey: "bookingId",
       as: "bookingRooms",
@@ -57,6 +59,11 @@ Booking.init(
       validate: {
         isDate: true,
         notEmpty: true,
+        isAfterToday(value) {
+          if (new Date(value) <= new Date().setHours(0, 0, 0, 0)) {
+            throw new Error("Check-in date must be in the future");
+          }
+        },
       },
     },
     checkOutDate: {
@@ -72,11 +79,39 @@ Booking.init(
         },
       },
     },
+    subTotalAmount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      validate: {
+        isDecimal: {
+          msg: "Subtotal must be a valid decimal number",
+        },
+        min: {
+          args: [0],
+          msg: "Subtotal cannot be negative",
+        },
+      },
+    },
     totalAmount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       validate: {
-        min: 0,
+        isDecimal: {
+          msg: "Total amount must be a valid decimal number",
+        },
+        min: {
+          args: [0],
+          msg: "Total amount cannot be negative",
+        },
+      },
+    },
+    bookingType: {
+      type: DataTypes.ENUM("room", "homestay", "mixed"),
+      allowNull: true,
+      validate: {
+        notEmpty: {
+          msg: "Booking type is required",
+        },
       },
     },
     bookingStatus: {
@@ -152,49 +187,31 @@ Booking.init(
     tableName: "bookings",
     timestamps: true,
     paranoid: true,
+    defaultScope: {
+      where: {},
+    },
     hooks: {
-      afterCreate: async (booking) => {
-        // Update availability when booking is created
-        await booking.updateAvailability("unavailable");
-      },
-      afterUpdate: async (booking) => {
-        // Update availability when booking status changes
-        if (booking.changed("bookingStatus")) {
-          if (["completed", "cancelled"].includes(booking.bookingStatus)) {
-            await booking.updateAvailability("available");
-          } else if (booking.bookingStatus === "confirmed") {
-            await booking.updateAvailability("booked");
+      beforeValidate: (booking) => {
+        // Auto-determine booking type based on associated rooms/homestays
+        if (
+          booking.bookingType === null &&
+          (booking.rooms || booking.homestays)
+        ) {
+          const hasRooms = booking.rooms && booking.rooms.length > 0;
+          const hasHomestays =
+            booking.homestays && booking.homestays.length > 0;
+
+          if (hasRooms && hasHomestays) {
+            booking.bookingType = "mixed";
+          } else if (hasRooms) {
+            booking.bookingType = "room";
+          } else if (hasHomestays) {
+            booking.bookingType = "homestay";
           }
         }
       },
     },
   }
 );
-
-// Instance method to update availability of booked items
-Booking.prototype.updateAvailability = async function (status) {
-  const booking = await Booking.findByPk(this.id, {
-    include: [
-      { model: this.sequelize.models.Room, as: "rooms" },
-      { model: this.sequelize.models.HomeStay, as: "homestays" },
-    ],
-  });
-
-  // Update rooms availability
-  if (booking.rooms && booking.rooms.length > 0) {
-    await Promise.all(
-      booking.rooms.map((room) => room.update({ availabilityStatus: status }))
-    );
-  }
-
-  // Update homestays availability
-  if (booking.homestays && booking.homestays.length > 0) {
-    await Promise.all(
-      booking.homestays.map((homestay) =>
-        homestay.update({ availabilityStatus: status })
-      )
-    );
-  }
-};
 
 module.exports = Booking;

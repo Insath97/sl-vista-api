@@ -1,7 +1,19 @@
 const { DataTypes, Model } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-class BookingHomeStay extends Model {}
+class BookingHomeStay extends Model {
+  static associate(models) {
+    this.belongsTo(models.Booking, {
+      foreignKey: "bookingId",
+      as: "booking",
+    });
+
+    this.belongsTo(models.HomeStay, {
+      foreignKey: "homestayId",
+      as: "homestay",
+    });
+  }
+}
 
 BookingHomeStay.init(
   {
@@ -25,10 +37,6 @@ BookingHomeStay.init(
         model: "home_stays",
         key: "id",
       },
-    },
-    specialRequests: {
-      type: DataTypes.TEXT,
-      allowNull: true,
     },
   },
   {

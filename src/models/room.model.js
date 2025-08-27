@@ -1,4 +1,4 @@
-const { DataTypes, Model } = require("sequelize");
+const { DataTypes, Model, Op } = require("sequelize");
 const { sequelize } = require("../config/database");
 
 class Room extends Model {
@@ -35,8 +35,50 @@ class Room extends Model {
     this.belongsToMany(models.Booking, {
       through: models.BookingRoom,
       foreignKey: "roomId",
-      as: "rooms",
+      as: "bookings",
     });
+  }
+
+  // Check availability for dates
+  async checkAvailability(checkInDate, checkOutDate) {
+    const overlappingBookings = await this.getBookings({
+      where: {
+        [Op.or]: [
+          {
+            checkInDate: { [Op.between]: [checkInDate, checkOutDate] },
+          },
+          {
+            checkOutDate: { [Op.between]: [checkInDate, checkOutDate] },
+          },
+          {
+            [Op.and]: [
+              { checkInDate: { [Op.lte]: checkInDate } },
+              { checkOutDate: { [Op.gte]: checkOutDate } },
+            ],
+          },
+        ],
+        bookingStatus: { [Op.in]: ["pending", "confirmed"] },
+      },
+    });
+
+    return overlappingBookings.length === 0;
+  }
+
+  // Update availability status based on bookings
+  async updateAvailabilityStatus() {
+    const today = new Date();
+    const upcomingBookings = await this.getBookings({
+      where: {
+        checkInDate: { [Op.gte]: today },
+        bookingStatus: { [Op.in]: ["pending", "confirmed"] },
+      },
+    });
+
+    if (upcomingBookings.length > 0) {
+      await this.update({ availabilityStatus: "unavailable" });
+    } else {
+      await this.update({ availabilityStatus: "available" });
+    }
   }
 
   // Helper methods for amenities
@@ -58,7 +100,7 @@ class Room extends Model {
         if (update.id) {
           const image = await this.sequelize.models.RoomImage.findOne({
             where: { id: update.id, roomId: this.id },
-            paranoid: false, // Include soft-deleted images
+            paranoid: false,
           });
 
           if (!image) {
@@ -67,7 +109,6 @@ class Room extends Model {
             );
           }
 
-          // Restore if soft-deleted
           if (image.deletedAt) {
             await image.restore();
           }
@@ -290,7 +331,8 @@ Room.init(
         "available",
         "unavailable",
         "maintenance",
-        "archived"
+        "archived",
+        "booked"
       ),
       allowNull: false,
       defaultValue: "available",
@@ -350,7 +392,6 @@ Room.init(
     },
     hooks: {
       beforeUpdate: (room) => {
-        // Update status change timestamp
         if (
           room.changed("approvalStatus") ||
           room.changed("availabilityStatus") ||
@@ -359,16 +400,14 @@ Room.init(
           room.lastStatusChange = new Date();
         }
 
-        // Set approved timestamp
         if (
           room.changed("approvalStatus") &&
           room.approvalStatus === "approved"
         ) {
           room.approvedAt = new Date();
-          room.vistaVerified = true; // Auto-verify when approved
+          room.vistaVerified = true;
         }
 
-        // Auto-update maintenance dates
         if (room.changed("maintenanceNotes")) {
           room.lastMaintenanceDate = new Date();
           if (room.cleaningStatus === "Maintenance") {
@@ -379,7 +418,6 @@ Room.init(
         }
       },
       afterCreate: (room) => {
-        // Set initial maintenance dates
         room.lastMaintenanceDate = new Date();
         room.nextMaintenanceDate = new Date(
           new Date().setDate(new Date().getDate() + 30)

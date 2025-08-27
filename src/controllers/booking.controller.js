@@ -1,241 +1,353 @@
 const { Op } = require("sequelize");
 const { validationResult } = require("express-validator");
-const { sequelize } = require("../config/database");
 const Booking = require("../models/booking.model");
+const Property = require("../models/property.model");
 const Room = require("../models/room.model");
 const HomeStay = require("../models/homeStay.model");
+const BookingRoom = require("../models/bookingRoom.model");
+const BookingHomeStay = require("../models/bookingHomestay.model");
 const CustomerProfile = require("../models/customerProfile.model");
 const MerchantProfile = require("../models/merchantProfile.model");
+const User = require("../models/user.model");
 
-// Helper function to check availability
-async function checkAvailability(items, checkInDate, checkOutDate, itemType) {
-  const availabilityChecks = items.map(async (item) => {
-    const conflictingBookings = await Booking.count({
+// Helper function to check if merchant has access to a booking
+async function checkMerchantBookingAccess(bookingId, merchantId) {
+  try {
+    // Check if booking has rooms belonging to this merchant
+    const roomBooking = await BookingRoom.findOne({
       include: [
         {
-          model: itemType === "room" ? Room : HomeStay,
-          as: itemType === "room" ? "rooms" : "homestays",
-          where: { id: item.id },
-          through: {
-            where: {
-              bookingId: { [Op.not]: null },
+          model: Room,
+          as: "room",
+          include: [
+            {
+              model: Property,
+              as: "property",
+              where: { merchantId: merchantId },
             },
-          },
+          ],
         },
       ],
-      where: {
-        [Op.or]: [
-          {
-            checkInDate: { [Op.lt]: checkOutDate },
-            checkOutDate: { [Op.gt]: checkInDate },
-          },
-        ],
-        bookingStatus: {
-          [Op.notIn]: ["cancelled", "failed"],
-        },
-      },
+      where: { bookingId: bookingId },
     });
 
-    return conflictingBookings === 0;
-  });
+    if (roomBooking) {
+      return true;
+    }
 
-  const results = await Promise.all(availabilityChecks);
-  return results.every((isAvailable) => isAvailable);
+    // Check if booking has homestays belonging to this merchant
+    const homestayBooking = await BookingHomeStay.findOne({
+      include: [
+        {
+          model: HomeStay,
+          as: "homestay",
+          where: { merchantId: merchantId },
+        },
+      ],
+      where: { bookingId: bookingId },
+    });
+
+    if (homestayBooking) {
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Error checking merchant access:", error);
+    return false;
+  }
 }
 
-// Create booking
+// Helper function to determine cancellation policy
+function determineCancellationPolicy(booking) {
+  // Priority: Room cancellation policy > Homestay cancellation policy > Default
+  if (booking.rooms && booking.rooms.length > 0) {
+    return booking.rooms[0].property.cancellationPolicy || "moderate";
+  }
+  if (booking.homestays && booking.homestays.length > 0) {
+    return booking.homestays[0].cancellationPolicy || "moderate";
+  }
+  return "moderate"; // Default policy
+}
+
+// Helper function to calculate refund amount
+function calculateRefundAmount(booking, daysUntilCheckIn, cancellationPolicy) {
+  const totalAmount = parseFloat(booking.totalAmount);
+
+  switch (cancellationPolicy) {
+    case "flexible":
+      // Full refund if cancelled more than 24 hours before check-in
+      if (daysUntilCheckIn > 1) {
+        return totalAmount;
+      } else {
+        return totalAmount * 0.5; // 50% refund if within 24 hours
+      }
+
+    case "moderate":
+      // Full refund if cancelled more than 5 days before check-in
+      if (daysUntilCheckIn > 5) {
+        return totalAmount;
+      } else if (daysUntilCheckIn > 3) {
+        return totalAmount * 0.7; // 70% refund 3-5 days before
+      } else if (daysUntilCheckIn > 1) {
+        return totalAmount * 0.5; // 50% refund 1-3 days before
+      } else {
+        return 0; // No refund within 24 hours
+      }
+
+    case "strict":
+      // 50% refund if cancelled more than 7 days before check-in
+      if (daysUntilCheckIn > 7) {
+        return totalAmount * 0.5;
+      } else if (daysUntilCheckIn > 3) {
+        return totalAmount * 0.3; // 30% refund 3-7 days before
+      } else {
+        return 0; // No refund within 3 days
+      }
+
+    case "non_refundable":
+      return 0; // No refund under any circumstances
+
+    default:
+      // Default moderate policy
+      if (daysUntilCheckIn > 3) {
+        return totalAmount * 0.8; // 80% refund more than 3 days before
+      } else {
+        return 0; // No refund within 3 days
+      }
+  }
+}
+
+/* create booking */
 exports.createBooking = async (req, res) => {
   const errors = validationResult(req);
+
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
   try {
-    const {
-      rooms = [],
-      homestays = [],
-      checkInDate,
-      checkOutDate,
-      specialRequests,
-      paymentMethod,
-    } = req.body;
-
-    const userId = req.user.id;
-
-    // Validate dates
-    if (new Date(checkInDate) < new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot book for past dates",
-      });
-    }
-
-    if (new Date(checkOutDate) <= new Date(checkInDate)) {
-      return res.status(400).json({
-        success: false,
-        message: "Check-out date must be after check-in date",
-      });
-    }
-
     // Get customer profile
-    const customer = await CustomerProfile.findOne({ where: { userId } });
+    const customer = await CustomerProfile.findOne({
+      where: { userId: req.user.id },
+    });
+
     if (!customer) {
-      return res.status(404).json({
+      return res.status(403).json({
         success: false,
-        message: "Customer profile not found",
+        message: "Customer profile not found or inactive",
       });
     }
 
-    // Check if at least one room or homestay is selected
-    if (rooms.length === 0 && homestays.length === 0) {
+    const { homestayIds = [], roomIds = [], ...bookingData } = req.body;
+
+    // Validate that at least one room or homestay is selected
+    if (roomIds.length === 0 && homestayIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one room or homestay must be selected",
+        message: "At least one room or homestay must be selected for booking",
       });
     }
 
-    // Check availability for all items
-    let allAvailable = true;
-    let availabilityMessage = "";
+    let subTotalAmount = 0;
+    let rooms = [];
+    let homestays = [];
+    const bookingDetails = {
+      rooms: [],
+      homestays: [],
+      nights: 0,
+    };
 
-    if (rooms.length > 0) {
-      const roomsAvailable = await checkAvailability(
-        rooms,
-        checkInDate,
-        checkOutDate,
-        "room"
-      );
-      if (!roomsAvailable) {
-        allAvailable = false;
-        availabilityMessage =
-          "One or more rooms are not available for the selected dates";
-      }
-    }
+    // Check date availability
+    const checkInDate = new Date(bookingData.checkInDate);
+    const checkOutDate = new Date(bookingData.checkOutDate);
+    const nights = Math.ceil(
+      (checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)
+    );
+    bookingDetails.nights = nights;
 
-    if (homestays.length > 0 && allAvailable) {
-      const homestaysAvailable = await checkAvailability(
-        homestays,
-        checkInDate,
-        checkOutDate,
-        "homestay"
-      );
-      if (!homestaysAvailable) {
-        allAvailable = false;
-        availabilityMessage =
-          "One or more homestays are not available for the selected dates";
-      }
-    }
-
-    if (!allAvailable) {
-      return res.status(400).json({
-        success: false,
-        message: availabilityMessage,
-      });
-    }
-
-    // Calculate total amount
-    let totalAmount = 0;
-    const days =
-      (new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24);
-
-    // Calculate room prices
-    if (rooms.length > 0) {
-      const roomPrices = await Promise.all(
-        rooms.map(async (room) => {
-          const roomData = await Room.findByPk(room.id);
-          return days * roomData.pricePerNight;
-        })
-      );
-      totalAmount += roomPrices.reduce((sum, price) => sum + price, 0);
-    }
-
-    // Calculate homestay prices
-    if (homestays.length > 0) {
-      const homestayPrices = await Promise.all(
-        homestays.map(async (homestay) => {
-          const homestayData = await HomeStay.findByPk(homestay.id);
-          return days * homestayData.basePrice + homestayData.cleaningFee;
-        })
-      );
-      totalAmount += homestayPrices.reduce((sum, price) => sum + price, 0);
-    }
-
-    // Create transaction for atomic operations
-    const transaction = await sequelize.transaction();
-
-    try {
-      // Create booking
-      const booking = await Booking.create(
-        {
-          customerId: customer.id,
-          checkInDate,
-          checkOutDate,
-          totalAmount,
-          bookingStatus: "pending",
-          paymentStatus: "pending",
-          paymentMethod,
-          specialRequests,
-          numberOfGuests: req.body.numberOfGuests || 1,
-          numberOfChildren: req.body.numberOfChildren || 0,
-          numberOfInfants: req.body.numberOfInfants || 0,
+    // Process rooms if any
+    if (roomIds.length > 0) {
+      rooms = await Room.findAll({
+        where: {
+          id: roomIds,
+          isActive: true,
+          approvalStatus: "approved",
+          availabilityStatus: { [Op.in]: ["available", "booked"] }, // Allow booked rooms to be checked
         },
-        { transaction }
-      );
-
-      // Associate rooms if any
-      if (rooms.length > 0) {
-        await Promise.all(
-          rooms.map(async (room) => {
-            await BookingRoom.create(
-              {
-                bookingId: booking.id,
-                roomId: room.id,
-                specialRequests: room.specialRequests || null,
-              },
-              { transaction }
-            );
-          })
-        );
-      }
-
-      // Associate homestays if any
-      if (homestays.length > 0) {
-        await Promise.all(
-          homestays.map(async (homestay) => {
-            await BookingHomeStay.create(
-              {
-                bookingId: booking.id,
-                homestayId: homestay.id,
-                specialRequests: homestay.specialRequests || null,
-              },
-              { transaction }
-            );
-          })
-        );
-      }
-
-      // Commit transaction
-      await transaction.commit();
-
-      // Get full booking details to return
-      const fullBooking = await Booking.findByPk(booking.id, {
         include: [
-          { model: CustomerProfile, as: "customer" },
-          { model: Room, as: "rooms", through: { attributes: [] } },
-          { model: HomeStay, as: "homestays", through: { attributes: [] } },
+          {
+            model: Property,
+            as: "property",
+            attributes: ["id", "title"],
+          },
         ],
       });
 
-      return res.status(201).json({
-        success: true,
-        message: "Booking created successfully",
-        data: fullBooking,
-      });
-    } catch (error) {
-      // Rollback transaction if any error occurs
-      await transaction.rollback();
-      throw error;
+      if (rooms.length !== roomIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Some rooms are not available for booking",
+        });
+      }
+
+      // Check room availability for dates using the new method
+      for (const room of rooms) {
+        const isAvailable = await room.checkAvailability(
+          checkInDate,
+          checkOutDate
+        );
+        if (!isAvailable) {
+          return res.status(400).json({
+            success: false,
+            message: `Room ${room.roomNumber} is not available for the selected dates`,
+          });
+        }
+      }
     }
+
+    // Process homestays if any
+    if (homestayIds.length > 0) {
+      homestays = await HomeStay.findAll({
+        where: {
+          id: homestayIds,
+          isActive: true,
+          approvalStatus: "approved",
+          availabilityStatus: { [Op.in]: ["available", "booked"] }, // Allow booked homestays to be checked
+        },
+        include: [
+          {
+            model: MerchantProfile,
+            as: "merchant",
+            attributes: ["id", "merchantName", "businessName"],
+          },
+        ],
+      });
+
+      if (homestays.length !== homestayIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Some homestays are not available for booking",
+        });
+      }
+
+      // Check homestay availability for dates using the new method
+      for (const homestay of homestays) {
+        const isAvailable = await homestay.checkAvailability(
+          checkInDate,
+          checkOutDate
+        );
+        if (!isAvailable) {
+          return res.status(400).json({
+            success: false,
+            message: `Homestay ${homestay.title} is not available for the selected dates`,
+          });
+        }
+      }
+    }
+
+    // Calculate costs
+    for (const room of rooms) {
+      const roomTotal = parseFloat(room.basePrice) * nights;
+      subTotalAmount += roomTotal;
+
+      bookingDetails.rooms.push({
+        id: room.id,
+        roomNumber: room.roomNumber,
+        propertyId: room.propertyId,
+        propertyName: room.property?.title,
+        basePrice: room.basePrice,
+        nights: nights,
+        total: roomTotal,
+      });
+    }
+
+    for (const homestay of homestays) {
+      const homestayTotal =
+        parseFloat(homestay.basePrice) * nights +
+        parseFloat(homestay.cleaningFee || 0);
+      subTotalAmount += homestayTotal;
+
+      bookingDetails.homestays.push({
+        id: homestay.id,
+        title: homestay.title,
+        basePrice: homestay.basePrice,
+        cleaningFee: homestay.cleaningFee || 0,
+        nights: nights,
+        total: homestayTotal,
+      });
+    }
+
+    const totalAmount = subTotalAmount;
+
+    // Determine booking type
+    const bookingType =
+      roomIds.length > 0 && homestayIds.length > 0
+        ? "mixed"
+        : roomIds.length > 0
+        ? "room"
+        : "homestay";
+
+    // Create booking
+    const booking = await Booking.create({
+      ...bookingData,
+      customerId: customer.id,
+      subTotalAmount,
+      totalAmount,
+      bookingType,
+      bookingStatus: "confirmed",
+      numberOfGuests: bookingData.numberOfGuests || 1,
+    });
+
+    // Link rooms to booking if any
+    if (rooms.length > 0) {
+      const bookingRooms = rooms.map((room) => ({
+        bookingId: booking.id,
+        roomId: room.id,
+        priceAtBooking: room.basePrice,
+        numberOfGuests: bookingData.numberOfGuests || 1,
+      }));
+
+      await BookingRoom.bulkCreate(bookingRooms);
+
+     /*  // Update room availability status to "booked"
+      for (const room of rooms) {
+        await room.update({ availabilityStatus: "booked" });
+      } */
+    }
+
+    // Link homestays to booking if any
+    if (homestays.length > 0) {
+      const bookingHomestays = homestays.map((homestay) => ({
+        bookingId: booking.id,
+        homestayId: homestay.id,
+        priceAtBooking: homestay.basePrice,
+        cleaningFeeAtBooking: homestay.cleaningFee || 0,
+        numberOfGuests: bookingData.numberOfGuests || 1,
+      }));
+
+      await BookingHomeStay.bulkCreate(bookingHomestays);
+
+      // Update homestay availability status to "booked"
+      /* for (const homestay of homestays) {
+        await homestay.update({ availabilityStatus: "booked" });
+      } */
+    }
+
+    // Return complete booking details
+    const bookingWithDetails = await Booking.findByPk(booking.id);
+
+    return res.status(201).json({
+      success: true,
+      message: "Booking created successfully",
+      data: {
+        booking: bookingWithDetails,
+        bookingDetails,
+        nights,
+        subTotalAmount,
+        totalAmount,
+      },
+    });
   } catch (error) {
     console.error("Error creating booking:", error);
     return res.status(500).json({
@@ -246,110 +358,175 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-// Get all bookings (with filters for admin/merchant/customer)
+/* Get All Bookings */
 exports.getAllBookings = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
+    console.log("User logged in with account type : " + req.user.accountType);
+
     const {
-      status,
-      fromDate,
-      toDate,
       page = 1,
       limit = 10,
-      includeCancelled = false,
+      bookingStatus,
+      paymentStatus,
+      bookingType,
+      startDate,
+      endDate,
+      includeDeleted,
     } = req.query;
 
-    const offset = (page - 1) * limit;
     const where = {};
     const include = [
       {
         model: CustomerProfile,
         as: "customer",
-        attributes: ["id", "firstName", "lastName", "email"],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email"],
+          },
+        ],
       },
-      { model: Room, as: "rooms", through: { attributes: [] } },
-      { model: HomeStay, as: "homestays", through: { attributes: [] } },
     ];
 
-    // Date filtering
-    if (fromDate && toDate) {
-      where[Op.or] = [
+    // Always include both rooms and homestays associations
+    include.push({
+      model: Room,
+      as: "rooms",
+      through: { attributes: [] },
+      include: [
         {
-          checkInDate: { [Op.between]: [new Date(fromDate), new Date(toDate)] },
+          model: Property,
+          as: "property",
+          attributes: ["id", "title", "propertyType"],
+          include: [
+            {
+              model: MerchantProfile,
+              as: "merchant",
+              attributes: [
+                "id",
+                "merchantName",
+                "businessName",
+                "businessType",
+              ],
+            },
+          ],
         },
-        {
-          checkOutDate: {
-            [Op.between]: [new Date(fromDate), new Date(toDate)],
-          },
-        },
-      ];
-    }
+      ],
+    });
 
-    // Status filtering
-    if (status) {
-      where.bookingStatus = status;
-    } else if (!includeCancelled) {
-      where.bookingStatus = { [Op.notIn]: ["cancelled", "failed"] };
+    include.push({
+      model: HomeStay,
+      as: "homestays",
+      through: { attributes: [] },
+      include: [
+        {
+          model: MerchantProfile,
+          as: "merchant",
+          attributes: ["id", "merchantName", "businessName", "businessType"],
+        },
+      ],
+    });
+
+    // Filter by status
+    if (bookingStatus) where.bookingStatus = bookingStatus;
+    if (paymentStatus) where.paymentStatus = paymentStatus;
+
+    // Date range filter
+    if (startDate && endDate) {
+      where.checkInDate = {
+        [Op.between]: [new Date(startDate), new Date(endDate)],
+      };
+    } else if (startDate) {
+      where.checkInDate = { [Op.gte]: new Date(startDate) };
+    } else if (endDate) {
+      where.checkInDate = { [Op.lte]: new Date(endDate) };
     }
 
     // Role-based filtering
     if (req.user.accountType === "customer") {
+      // Customer can only see their own bookings
       const customer = await CustomerProfile.findOne({
         where: { userId: req.user.id },
       });
+
       if (!customer) {
-        return res.status(404).json({
+        return res.status(403).json({
           success: false,
           message: "Customer profile not found",
         });
       }
       where.customerId = customer.id;
     } else if (req.user.accountType === "merchant") {
+      // Merchant can only see bookings for their properties/homestays
       const merchant = await MerchantProfile.findOne({
         where: { userId: req.user.id },
       });
+
       if (!merchant) {
-        return res.status(404).json({
+        return res.status(403).json({
           success: false,
           message: "Merchant profile not found",
         });
       }
 
-      // Include bookings that have rooms/homestays belonging to this merchant
-      include.push({
-        model: Room,
-        as: "rooms",
-        through: { attributes: [] },
-        where: { merchantId: merchant.id },
-        required: false,
-      });
+      console.log(
+        `Merchant ID: ${merchant.id}, Business Type: ${merchant.businessType}`
+      );
 
-      include.push({
-        model: HomeStay,
-        as: "homestays",
-        through: { attributes: [] },
-        where: { merchantId: merchant.id },
-        required: false,
-      });
+      // SIMPLIFIED: Show all bookings for this merchant regardless of business type
+      const merchantWhere = {
+        [Op.or]: [
+          { "$rooms.property.merchantId$": merchant.id },
+          { "$homestays.merchantId$": merchant.id },
+        ],
+      };
 
-      // Only show bookings that have at least one room or homestay from this merchant
-      where[Op.or] = [
-        { "$rooms.id$": { [Op.not]: null } },
-        { "$homestays.id$": { [Op.not]: null } },
-      ];
+      where[Op.and] = [merchantWhere];
     }
+    // Admin can see all bookings (no additional filtering)
 
-    const { count, rows: bookings } = await Booking.findAndCountAll({
+    const options = {
       where,
       include,
-      distinct: true,
-      offset,
-      limit: parseInt(limit),
       order: [["createdAt", "DESC"]],
-    });
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      paranoid: includeDeleted !== "true",
+      distinct: true,
+      subQuery: false,
+    };
+
+    const { count, rows: bookings } = await Booking.findAndCountAll(options);
+
+    // Manual bookingType filtering
+    let filteredBookings = bookings;
+    if (bookingType) {
+      filteredBookings = bookings.filter((booking) => {
+        const hasRooms = booking.rooms && booking.rooms.length > 0;
+        const hasHomestays = booking.homestays && booking.homestays.length > 0;
+
+        switch (bookingType) {
+          case "room":
+            return hasRooms && !hasHomestays;
+          case "homestay":
+            return hasHomestays && !hasRooms;
+          case "mixed":
+            return hasRooms && hasHomestays;
+          default:
+            return true;
+        }
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      data: bookings,
+      data: filteredBookings,
       pagination: {
         total: count,
         page: parseInt(page),
@@ -367,80 +544,146 @@ exports.getAllBookings = async (req, res) => {
   }
 };
 
-// Get booking by ID
+/* Get Booking by ID */
 exports.getBookingById = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
-    const { id } = req.params;
-    const include = [
-      {
-        model: CustomerProfile,
-        as: "customer",
-        attributes: ["id", "firstName", "lastName", "email"],
-      },
-      { model: Room, as: "rooms", through: { attributes: [] } },
-      { model: HomeStay, as: "homestays", through: { attributes: [] } },
-    ];
+    console.log("User logged in with account type : " + req.user.accountType);
 
-    const where = { id };
+    const { includeDeleted } = req.query;
+    const bookingId = req.params.id;
 
-    // Role-based access control
-    if (req.user.accountType === "customer") {
-      const customer = await CustomerProfile.findOne({
-        where: { userId: req.user.id },
-      });
-      if (!customer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer profile not found",
-        });
-      }
-      where.customerId = customer.id;
-    } else if (req.user.accountType === "merchant") {
-      const merchant = await MerchantProfile.findOne({
-        where: { userId: req.user.id },
-      });
-      if (!merchant) {
-        return res.status(404).json({
-          success: false,
-          message: "Merchant profile not found",
-        });
-      }
-
-      // Include merchant's rooms/homestays in the query
-      include.push({
-        model: Room,
-        as: "rooms",
-        through: { attributes: [] },
-        where: { merchantId: merchant.id },
-        required: false,
-      });
-
-      include.push({
-        model: HomeStay,
-        as: "homestays",
-        through: { attributes: [] },
-        where: { merchantId: merchant.id },
-        required: false,
-      });
-
-      // Only show if booking has at least one room or homestay from this merchant
-      where[Op.or] = [
-        { "$rooms.id$": { [Op.not]: null } },
-        { "$homestays.id$": { [Op.not]: null } },
-      ];
-    }
-
-    const booking = await Booking.findOne({
-      where,
-      include,
+    // First, get the booking without merchant filters to check existence
+    let booking = await Booking.findByPk(bookingId, {
+      include: [
+        {
+          model: CustomerProfile,
+          as: "customer",
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "email"],
+            },
+          ],
+        },
+      ],
+      paranoid: includeDeleted !== "true",
     });
 
     if (!booking) {
       return res.status(404).json({
         success: false,
-        message: "Booking not found or you don't have permission to view it",
+        message: "Booking not found",
       });
     }
+
+    // Role-based access control
+    if (req.user.accountType === "customer") {
+      // Customer can only see their own bookings
+      const customer = await CustomerProfile.findOne({
+        where: { userId: req.user.id },
+      });
+
+      if (!customer || booking.customerId !== customer.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to view this booking",
+        });
+      }
+    } else if (req.user.accountType === "merchant") {
+      // Merchant can only see bookings for their properties/homestays
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
+      });
+
+      if (!merchant) {
+        return res.status(403).json({
+          success: false,
+          message: "Merchant profile not found",
+        });
+      }
+
+      console.log(
+        `Merchant ID: ${merchant.id}, Business Type: ${merchant.businessType}`
+      );
+
+      // Check if this booking contains the merchant's rooms or homestays
+      const hasAccess = await checkMerchantBookingAccess(
+        bookingId,
+        merchant.id
+      );
+
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to view this booking",
+        });
+      }
+    }
+    // Admin can see all bookings (no additional filtering)
+
+    // Now load the full booking details with all associations
+    const fullInclude = [
+      {
+        model: CustomerProfile,
+        as: "customer",
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email"],
+          },
+        ],
+      },
+      {
+        model: Room,
+        as: "rooms",
+        through: { attributes: [] },
+        include: [
+          {
+            model: Property,
+            as: "property",
+            attributes: ["id", "title", "propertyType"],
+            include: [
+              {
+                model: MerchantProfile,
+                as: "merchant",
+                attributes: [
+                  "id",
+                  "merchantName",
+                  "businessName",
+                  "businessType",
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        model: HomeStay,
+        as: "homestays",
+        through: {
+          attributes: [],
+        },
+        include: [
+          {
+            model: MerchantProfile,
+            as: "merchant",
+            attributes: ["id", "merchantName", "businessName", "businessType"],
+          },
+        ],
+      },
+    ];
+
+    booking = await Booking.findByPk(bookingId, {
+      include: fullInclude,
+      paranoid: includeDeleted !== "true",
+    });
 
     return res.status(200).json({
       success: true,
@@ -456,120 +699,139 @@ exports.getBookingById = async (req, res) => {
   }
 };
 
-// Cancel booking
+/* Cancel Booking */
 exports.cancelBooking = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
-    const { id } = req.params;
     const { cancellationReason } = req.body;
 
-    const where = { id };
+    const booking = await Booking.findByPk(req.params.id, {
+      include: [
+        {
+          model: CustomerProfile,
+          as: "customer",
+          attributes: ["id", "userId"],
+        },
+        {
+          model: Room,
+          as: "rooms",
+          through: { attributes: [] },
+          include: [
+            {
+              model: Property,
+              as: "property",
+              attributes: ["id", "cancellationPolicy"],
+            },
+          ],
+        },
+        {
+          model: HomeStay,
+          as: "homestays",
+          through: { attributes: [] },
+          attributes: ["id", "cancellationPolicy"],
+        },
+      ],
+    });
 
-    // Role-based access control
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // Check permissions
     if (req.user.accountType === "customer") {
       const customer = await CustomerProfile.findOne({
         where: { userId: req.user.id },
       });
-      if (!customer) {
-        return res.status(404).json({
+
+      if (!customer || booking.customerId !== customer.id) {
+        return res.status(403).json({
           success: false,
-          message: "Customer profile not found",
+          message: "You can only cancel your own bookings",
         });
       }
-      where.customerId = customer.id;
     } else if (req.user.accountType === "merchant") {
+      // Merchant can only cancel bookings for their properties
       const merchant = await MerchantProfile.findOne({
         where: { userId: req.user.id },
       });
+
       if (!merchant) {
-        return res.status(404).json({
+        return res.status(403).json({
           success: false,
           message: "Merchant profile not found",
         });
       }
 
-      // Check if booking has at least one room/homestay from this merchant
-      const booking = await Booking.findOne({
-        where: { id },
-        include: [
-          {
-            model: Room,
-            as: "rooms",
-            through: { attributes: [] },
-            where: { merchantId: merchant.id },
-            required: false,
-          },
-          {
-            model: HomeStay,
-            as: "homestays",
-            through: { attributes: [] },
-            where: { merchantId: merchant.id },
-            required: false,
-          },
-        ],
-      });
+      // Check if booking contains merchant's properties
+      const hasMerchantRooms = booking.rooms.some(
+        (room) => room.property.merchantId === merchant.id
+      );
+      const hasMerchantHomestays = booking.homestays.some(
+        (homestay) => homestay.merchantId === merchant.id
+      );
 
-      if (!booking || (!booking.rooms.length && !booking.homestays.length)) {
+      if (!hasMerchantRooms && !hasMerchantHomestays) {
         return res.status(403).json({
           success: false,
-          message: "You don't have permission to cancel this booking",
+          message: "You can only cancel bookings for your properties",
         });
       }
     }
 
-    const booking = await Booking.findOne({ where });
-
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found or you don't have permission to cancel it",
-      });
-    }
-
-    // Check if booking can be cancelled
-    if (["cancelled", "completed", "failed"].includes(booking.bookingStatus)) {
+    // Check if booking is already cancelled
+    if (booking.bookingStatus === "cancelled") {
       return res.status(400).json({
         success: false,
-        message: `Booking is already ${booking.bookingStatus} and cannot be cancelled`,
+        message: "Booking is already cancelled",
       });
     }
 
-    if (new Date(booking.checkInDate) < new Date()) {
+    // Check if booking can be cancelled (within 3 days before check-in)
+    const checkInDate = new Date(booking.checkInDate);
+    const today = new Date();
+    const daysUntilCheckIn = Math.ceil(
+      (checkInDate - today) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysUntilCheckIn < 3) {
       return res.status(400).json({
         success: false,
-        message: "Cannot cancel a booking that has already started",
+        message: "Cannot cancel booking within 3 days of check-in",
       });
     }
 
-    // Calculate refund amount if applicable
-    let refundAmount = 0;
-    if (booking.isRefundable) {
-      // Implement your refund policy logic here
-      // For example: full refund if cancelled 7+ days before check-in
-      const daysBeforeCheckIn =
-        (new Date(booking.checkInDate) - new Date()) / (1000 * 60 * 60 * 24);
-
-      if (daysBeforeCheckIn > 7) {
-        refundAmount = booking.totalAmount;
-      } else if (daysBeforeCheckIn > 3) {
-        refundAmount = booking.totalAmount * 0.5; // 50% refund
-      }
-    }
+    // Determine cancellation policy and refund amount
+    const cancellationPolicy = determineCancellationPolicy(booking);
+    const refundAmount = calculateRefundAmount(
+      booking,
+      daysUntilCheckIn,
+      cancellationPolicy
+    );
 
     // Update booking status
     await booking.update({
       bookingStatus: "cancelled",
-      paymentStatus: refundAmount > 0 ? "refunded" : booking.paymentStatus,
       cancellationReason,
       cancellationDate: new Date(),
       refundAmount,
+      isRefundable: refundAmount > 0,
     });
 
     return res.status(200).json({
       success: true,
       message: "Booking cancelled successfully",
       data: {
+        booking,
         refundAmount,
-        cancellationDate: new Date(),
+        cancellationPolicy,
+        daysUntilCheckIn,
       },
     });
   } catch (error) {
@@ -582,68 +844,38 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
-// Update booking status (admin/merchant only)
+/* Update Booking Status */
 exports.updateBookingStatus = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
-    const { id } = req.params;
     const { status } = req.body;
+    const bookingId = req.params.id;
 
-    if (!["confirmed", "completed", "cancelled"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status",
-      });
-    }
-
-    const where = { id };
-
-    // Only admin or merchant can update status
-    if (req.user.accountType === "merchant") {
-      const merchant = await MerchantProfile.findOne({
-        where: { userId: req.user.id },
-      });
-      if (!merchant) {
-        return res.status(404).json({
-          success: false,
-          message: "Merchant profile not found",
-        });
-      }
-
-      // Check if booking has at least one room/homestay from this merchant
-      const booking = await Booking.findOne({
-        where: { id },
-        include: [
-          {
-            model: Room,
-            as: "rooms",
-            through: { attributes: [] },
-            where: { merchantId: merchant.id },
-            required: false,
-          },
-          {
-            model: HomeStay,
-            as: "homestays",
-            through: { attributes: [] },
-            where: { merchantId: merchant.id },
-            required: false,
-          },
-        ],
-      });
-
-      if (!booking || (!booking.rooms.length && !booking.homestays.length)) {
-        return res.status(403).json({
-          success: false,
-          message: "You don't have permission to update this booking",
-        });
-      }
-    } else if (req.user.accountType !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Only admins and merchants can update booking status",
-      });
-    }
-
-    const booking = await Booking.findOne({ where });
+    const booking = await Booking.findByPk(bookingId, {
+      include: [
+        {
+          model: Room,
+          as: "rooms",
+          through: { attributes: [] },
+          attributes: ["id"],
+        },
+        {
+          model: HomeStay,
+          as: "homestays",
+          through: { attributes: [] },
+          attributes: ["id"],
+        },
+        {
+          model: CustomerProfile,
+          as: "customer",
+          attributes: ["id", "userId"],
+        },
+      ],
+    });
 
     if (!booking) {
       return res.status(404).json({
@@ -652,30 +884,123 @@ exports.updateBookingStatus = async (req, res) => {
       });
     }
 
-    // Validate status transition
-    if (booking.bookingStatus === "cancelled" && status !== "cancelled") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot change status of a cancelled booking",
+    // Check permissions
+    if (req.user.accountType === "merchant") {
+      const merchant = await MerchantProfile.findOne({
+        where: { userId: req.user.id },
       });
-    }
 
-    if (booking.bookingStatus === "completed") {
+      if (!merchant) {
+        return res.status(403).json({
+          success: false,
+          message: "Merchant profile not found",
+        });
+      }
+
+      // Check if booking contains merchant's properties
+      const hasMerchantRooms = await BookingRoom.findOne({
+        include: [
+          {
+            model: Room,
+            as: "room",
+            include: [
+              {
+                model: Property,
+                as: "property",
+                where: { merchantId: merchant.id },
+              },
+            ],
+          },
+        ],
+        where: { bookingId: bookingId },
+      });
+
+      const hasMerchantHomestays = await BookingHomeStay.findOne({
+        include: [
+          {
+            model: HomeStay,
+            as: "homestay",
+            where: { merchantId: merchant.id },
+          },
+        ],
+        where: { bookingId: bookingId },
+      });
+
+      if (!hasMerchantRooms && !hasMerchantHomestays) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update bookings for your properties",
+        });
+      }
+    }
+    // Admin can update any booking
+
+    // Validate status transition
+    const validStatuses = [
+      "pending",
+      "confirmed",
+      "cancelled",
+      "completed",
+      "failed",
+    ];
+    if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Cannot change status of a completed booking",
+        message: "Invalid booking status",
       });
     }
 
     // Update booking status
     await booking.update({
       bookingStatus: status,
-      ...(status === "completed" && { paymentStatus: "paid" }),
+      ...(status === "completed" && { completedAt: new Date() }),
     });
+
+    // If status is completed, update room/homestay availability
+    if (status === "completed") {
+      // Update rooms to available
+      if (booking.rooms && booking.rooms.length > 0) {
+        const roomIds = booking.rooms.map((room) => room.id);
+        await Room.update(
+          { availabilityStatus: "available" },
+          { where: { id: roomIds } }
+        );
+      }
+
+      // Update homestays to available
+      if (booking.homestays && booking.homestays.length > 0) {
+        const homestayIds = booking.homestays.map((homestay) => homestay.id);
+        await HomeStay.update(
+          { availabilityStatus: "available" },
+          { where: { id: homestayIds } }
+        );
+      }
+    }
+
+    // If status is cancelled, also update availability (in case cancellation happens after booking was confirmed)
+    if (status === "cancelled") {
+      // Update rooms to available
+      if (booking.rooms && booking.rooms.length > 0) {
+        const roomIds = booking.rooms.map((room) => room.id);
+        await Room.update(
+          { availabilityStatus: "available" },
+          { where: { id: roomIds } }
+        );
+      }
+
+      // Update homestays to available
+      if (booking.homestays && booking.homestays.length > 0) {
+        const homestayIds = booking.homestays.map((homestay) => homestay.id);
+        await HomeStay.update(
+          { availabilityStatus: "available" },
+          { where: { id: homestayIds } }
+        );
+      }
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Booking status updated successfully",
+      message: `Booking status updated to ${status} successfully`,
       data: booking,
     });
   } catch (error) {

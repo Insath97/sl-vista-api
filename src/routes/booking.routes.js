@@ -7,6 +7,18 @@ const validate = require("../utils/validations/booking.validations");
 router.use(middleware.authenticate);
 
 /* create booking */
-router.post("/", validate.create, controller.createBooking);
+router.post("/", controller.createBooking);
+
+/* get all bookings */
+router.get("/", controller.getAllBookings);
+
+/* get booking by id */
+router.get("/:id", controller.getBookingById);
+
+/* cancel booking */
+router.patch("/:id", controller.cancelBooking);
+
+/* update booking */
+router.patch("/status/:id", controller.updateBookingStatus);
 
 module.exports = router;

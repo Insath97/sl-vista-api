@@ -1,6 +1,7 @@
 const { DataTypes, Model } = require("sequelize");
 const slugify = require("slugify");
 const { sequelize } = require("../config/database");
+const { Op } = require("sequelize");
 
 class HomeStay extends Model {
   static associate(models) {
@@ -29,8 +30,51 @@ class HomeStay extends Model {
     this.belongsToMany(models.Booking, {
       through: models.BookingHomeStay,
       foreignKey: "homestayId",
-      as: "home_stays",
+      as: "bookings",
+      onDelete: "CASCADE",
     });
+  }
+
+  // Check availability for dates
+  async checkAvailability(checkInDate, checkOutDate) {
+    const overlappingBookings = await this.getBookings({
+      where: {
+        [Op.or]: [
+          {
+            checkInDate: { [Op.between]: [checkInDate, checkOutDate] },
+          },
+          {
+            checkOutDate: { [Op.between]: [checkInDate, checkOutDate] },
+          },
+          {
+            [Op.and]: [
+              { checkInDate: { [Op.lte]: checkInDate } },
+              { checkOutDate: { [Op.gte]: checkOutDate } },
+            ],
+          },
+        ],
+        bookingStatus: { [Op.in]: ["pending", "confirmed"] },
+      },
+    });
+
+    return overlappingBookings.length === 0;
+  }
+
+  // Update availability status based on bookings
+  async updateAvailabilityStatus() {
+    const today = new Date();
+    const upcomingBookings = await this.getBookings({
+      where: {
+        checkInDate: { [Op.gte]: today },
+        bookingStatus: { [Op.in]: ["pending", "confirmed"] },
+      },
+    });
+
+    if (upcomingBookings.length > 0) {
+      await this.update({ availabilityStatus: "unavailable" });
+    } else {
+      await this.update({ availabilityStatus: "available" });
+    }
   }
 
   // Add images to homestay
@@ -395,7 +439,8 @@ HomeStay.init(
         "available",
         "unavailable",
         "maintenance",
-        "archived"
+        "archived",
+        "booked"
       ),
       allowNull: false,
       defaultValue: "available",
