@@ -436,6 +436,7 @@ exports.getAllBookings = async (req, res) => {
     // Filter by status
     if (bookingStatus) where.bookingStatus = bookingStatus;
     if (paymentStatus) where.paymentStatus = paymentStatus;
+    if (bookingType) where.bookingType = bookingType;
 
     // Date range filter
     if (startDate && endDate) {
@@ -504,29 +505,9 @@ exports.getAllBookings = async (req, res) => {
 
     const { count, rows: bookings } = await Booking.findAndCountAll(options);
 
-    // Manual bookingType filtering
-    let filteredBookings = bookings;
-    if (bookingType) {
-      filteredBookings = bookings.filter((booking) => {
-        const hasRooms = booking.rooms && booking.rooms.length > 0;
-        const hasHomestays = booking.homestays && booking.homestays.length > 0;
-
-        switch (bookingType) {
-          case "room":
-            return hasRooms && !hasHomestays;
-          case "homestay":
-            return hasHomestays && !hasRooms;
-          case "mixed":
-            return hasRooms && hasHomestays;
-          default:
-            return true;
-        }
-      });
-    }
-
     return res.status(200).json({
       success: true,
-      data: filteredBookings,
+      data: bookings,
       pagination: {
         total: count,
         page: parseInt(page),
