@@ -52,7 +52,7 @@ CustomerProfile.init(
     },
     mobileNumber: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
         is: /^\+?[\d\s-]+$/,
         notEmpty: true,

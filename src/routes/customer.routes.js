@@ -4,9 +4,10 @@ const middleware = require("../middlewares/auth.middleware");
 const controller = require("../controllers/customer.controller");
 const validate = require("../utils/validations/customer.validations");
 
+router.post("/auth/google", controller.googleAuth);
 router.post("/register", validate.register, controller.registerCustomer);
 
-router.use(middleware.authenticate);
+/* router.use(middleware.authenticate); */
 
 /* get all */
 router.get("/", validate.list, controller.getAllCustomers);

@@ -1,3 +1,4 @@
+const { OAuth2Client } = require("google-auth-library");
 const { validationResult } = require("express-validator");
 const { sequelize } = require("../config/database");
 const bcrypt = require("bcrypt");
@@ -67,6 +68,100 @@ exports.registerCustomer = async (req, res) => {
     });
   }
 };
+
+/* google auth */
+exports.googleAuth = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { token } = req.body;
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const googleId = payload["sub"];
+    const email = payload["email"];
+    const givenName = payload["given_name"] || "";
+    const familyName = payload["family_name"] || "";
+
+    // Check if user exists in the database
+    let user = await User.findOne({ where: { googleId } });
+
+    if (!user) {
+      // Check if user exists by email (to handle case where user registered with email first)
+      user = await User.findOne({ where: { email } });
+
+      if (user) {
+        // If user exists but doesn't have googleId, update it
+        user.googleId = googleId;
+        await user.save();
+      } else {
+        // If user doesn't exist, create a new customer user
+        user = await User.create({
+          email,
+          googleId,
+          password: await bcrypt.hash(
+            Math.random().toString(36).slice(-12),
+            12
+          ), // Random password
+          accountType: "customer", // Always set to customer for Google auth
+          isActive: true,
+          isGoogleAuth: true,
+        });
+
+        // Create customer profile with Google data
+        await CustomerProfile.create({
+          userId: user.id,
+          firstName: givenName,
+          lastName: familyName,
+          mobileNumber: "", // Google doesn't provide mobile number
+          isActive: true,
+        });
+      }
+    }
+
+    // Generate tokens
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
+    setAuthCookies(res, accessToken, refreshToken);
+
+    const userWithProfile = await User.findByPk(user.id, {
+      include: [
+        {
+          model: CustomerProfile,
+          as: "customerProfile",
+          attributes: ["firstName", "lastName", "mobileNumber"],
+        },
+      ],
+      attributes: { exclude: ["password"] },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Google authentication successful",
+      data: {
+        user: userWithProfile,
+        tokens: {
+          accessToken,
+          refreshToken,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Google authentication error:", error);
+    return res.status(401).json({
+      success: false,
+      message: "Invalid Google token",
+    });
+  }
+};               
 
 /* get all customers - admin only */
 exports.getAllCustomers = async (req, res) => {

@@ -72,6 +72,13 @@ User.init(
         len: [8, 128],
       },
     },
+    googleId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: {
+        msg: "Google ID already in use",
+      },
+    },
     accountType: {
       type: DataTypes.ENUM("admin", "merchant", "customer"),
       allowNull: false,
@@ -87,6 +94,10 @@ User.init(
     deletedAt: {
       type: DataTypes.DATE,
       allowNull: true,
+    },
+    isGoogleAuth: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
   },
   {

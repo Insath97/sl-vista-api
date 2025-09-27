@@ -2,15 +2,19 @@ const express = require("express");
 const dotenv = require("dotenv").config();
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
+const helmet = require("helmet");
+const { swaggerUi, specs } = require("./src/docs/swagger");
+
 const port = process.env.PORT || 5000;
 const app_url = process.env.APP_URL + ":" + port || "http://localhost:5000";
 const { sequelize } = require("./src/config/database");
 const models = require("./src/models");
 const logger = require("./src/config/logger");
 
-/* routes import */
+/* Import routes */
 const languagesRoutes = require("./src/routes/languagesRoutes");
 const customerRoutes = require("./src/routes/customer.routes");
+const googleAuthRoutes = require("./src/routes/googleAuth.routes");
 const authRoutes = require("./src/routes/authRoutes");
 const adminRoutes = require("./src/routes/adminRoutes");
 const amenityRoutes = require("./src/routes/admin/amenity.routes");
@@ -36,15 +40,30 @@ const userRoutes = require("./src/routes/user.routes");
 
 const app = express();
 
+// Helmet for security headers
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
     origin: [
-      "http://localhost:3000",
-      "https://slvista-admin.vercel.app",
-      "https://slvista-test.vercel.app",
+      process.env.FRONTEND_URL_1,
+      process.env.FRONTEND_URL_2,
+      process.env.FRONTEND_URL_3,
     ],
     credentials: true,
   })
@@ -52,16 +71,38 @@ app.use(
 
 // In your Express app
 app.use(express.json({ limit: "1024mb" }));
-app.use(express.urlencoded({ limit: "1024mb", extended: true }));
+app.use(
+  express.urlencoded({ limit: "1024mb", extended: true, parameterLimit: 10000 })
+);
 
-// Add response timeout settings
+// Request timeout middleware
 app.use((req, res, next) => {
   res.setTimeout(300000, () => {
-    // 5 minutes timeout
-    console.error("Request timeout");
+    logger.error("Request timeout", { url: req.url, method: req.method });
     res.status(504).json({ error: "Request timeout" });
   });
   next();
+});
+
+// API Documentation
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(specs, {
+    explorer: true,
+    customCss: ".swagger-ui .topbar { display: none }",
+    customSiteTitle: "Travel Vista API Documentation",
+  })
+);
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+  });
 });
 
 /*
@@ -71,6 +112,7 @@ app.use((req, res, next) => {
 */
 app.use("/api/v1/admins", adminRoutes);
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/auth/google", googleAuthRoutes);
 app.use("/api/v1/customers", customerRoutes);
 app.use("/api/v1/languages", languagesRoutes);
 app.use("/api/v1/amenities", amenityRoutes);
@@ -91,15 +133,34 @@ app.use("/api/v1/homestays", homestaysRoutes);
 app.use("/api/v1/booking", bookingRoutes);
 
 // 1st api
-app.get("/", (req, res) => {
+/* app.get("/", (req, res) => {
   res.send(`Welcome to Travel Vista API. Base URL: ${app_url}`);
-});
+}); */
 
 // admin
 app.use("/api/v1/admin/permissions", permissionRoutes);
 app.use("/api/v1/admin/roles", roleRoutes);
 app.use("/api/v1/admin/users", userRoutes);
 
+// Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    message: "Welcome to Travel Vista API",
+    version: "1.0.0",
+    documentation: "/api-docs",
+    health: "/health",
+    baseUrl: app_url,
+  });
+});
+
+// 404 handler
+app.use("*", (req, res) => {
+  res.status(404).json({
+    error: "Endpoint not found",
+    path: req.originalUrl,
+    method: req.method,
+  });
+});
 
 // Sync database and start server
 sequelize
